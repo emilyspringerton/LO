@@ -7,7 +7,7 @@ import (
 )
 
 // Real, found-live discrepancy, not silently resolved either way: the repo's own
-// examples/xor_check.llll (`🚪 🔢 🌒 🟰 🌒 ❓ 🔀 🌒 🌔 : 🌑`) uses PREFIX notation for the arith
+// examples/xor_check.llll (`🚪 🔢 🌒 ⚓ 🌒 ❓ 🔀 🌒 🌔 : 🌑`) uses PREFIX notation for the arith
 // operator (XOR4 S1 S3), but GRAMMAR.md §5.1 (and the original LoLanguageSpec.pdf's own worked
 // examples) specify INFIX (`Value ArithOp Value`) — confirmed directly by decoding the file's own
 // codepoints, not assumed. Since GRAMMAR.md is the reviewed, canonical Phase 0 spec, this parser
@@ -17,7 +17,7 @@ import (
 // real, named follow-up: reconcile examples/xor_check.llll with GRAMMAR.md once decided which
 // notation LO actually wants.
 func TestParseGrammarConsistentXorExample(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
+	toks, err := lexer.Lex("🚪 🔢 🌒 ⚓ 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
@@ -88,5 +88,52 @@ func TestParseWithSemiSucceeds(t *testing.T) {
 	}
 	if s, ok := prog.Body.(State); !ok || s.Value != 0 {
 		t.Errorf("expected the body to be S0, got %+v", prog.Body)
+	}
+}
+
+// TestParseLet -- GRAMMAR.md §2's `Let ::= LET Value Expr` (founder real-time: "use ✨ for
+// LET"). `✨ S1 🧲` binds S1, then the bare MAGNET (🧲) refers to it.
+func TestParseLet(t *testing.T) {
+	toks, err := lexer.Lex("✨ 🌒 🧲;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	let, ok := prog.Body.(Let)
+	if !ok {
+		t.Fatalf("expected a Let, got %T", prog.Body)
+	}
+	if s, ok := let.Bound.(State); !ok || s.Value != 1 {
+		t.Errorf("expected the bound value to be S1, got %+v", let.Bound)
+	}
+	if _, ok := let.Body.(LetRef); !ok {
+		t.Errorf("expected the body to be a LetRef, got %T", let.Body)
+	}
+}
+
+// TestParseNestedLetShadows -- real, documented GRAMMAR.md semantics: an inner Let's MAGNET
+// refers to the innermost binding, shadowing the outer one entirely.
+func TestParseNestedLetShadows(t *testing.T) {
+	toks, err := lexer.Lex("✨ 🌒 ✨ 🌓 🧲;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	outer, ok := prog.Body.(Let)
+	if !ok {
+		t.Fatalf("expected an outer Let, got %T", prog.Body)
+	}
+	inner, ok := outer.Body.(Let)
+	if !ok {
+		t.Fatalf("expected the outer Let's body to be an inner Let, got %T", outer.Body)
+	}
+	if _, ok := inner.Body.(LetRef); !ok {
+		t.Errorf("expected the inner Let's body to be a LetRef, got %T", inner.Body)
 	}
 }

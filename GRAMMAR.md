@@ -61,7 +61,8 @@ presentation) when typed from an emoji picker — §1.2 states how those are han
 | `DOT` | 🎯 | U+1F3AF | Dot product |
 | `MATMUL` | 🧮 | U+1F9EE | Matrix multiplication |
 | `DIMLEN` | ⚖️ | U+2696 (+VS16) | Dimension reader |
-| `EQ` | 🟰 | U+1F7F0 | Equality — **provisional, see §1.3** |
+| `EQ` | ⚓ | U+2693 | Equality — founder-confirmed 2026-08-30, see §1.3 |
+| `LET` | ✨ | U+2728 | Real variable binding, added 2026-08-30 — see §2's `Let` production |
 | `MATCH` | 🔍 | U+1F50D | Pattern match |
 | `SCALAR` | 💧 | U+1F4A7 | Scalar type |
 | `VECTOR` | 🌊 | U+1F30A | Vector type |
@@ -107,18 +108,15 @@ Unicode grapheme cluster, or by some normalized form. Phase 0 decides this concr
 This means `⚖`, `⚖️`, and any run containing `⚖` + a second, unlisted variation selector are
 respectively: valid, valid (same token), and a lex error — deterministic in all three cases.
 
-### 1.3 Open item carried forward, not glossed over
+### 1.3 Resolved (was an open item, 2026-08-30)
 
-`EQ` (🟰) is a **provisional assignment**, not a verified fact from the source. The source PDF's
-own text-extraction lost the actual equality glyph everywhere it appears (rendered as an empty
-parenthetical in five separate places — e.g. "checks if a vector component is equal ( ) to State
-2"), which is itself the same class of "silent character loss" the source's own final answer
-worried about for emoji encoding in general. 🟰 (Heavy Equals Sign, U+1F7F0) is chosen here
-because it is visually and semantically the closest unclaimed "equals" emoji and does not collide
-with any other token in §1.1 — but this needs a founder look at the original Gemini chat
-transcript (the live page, not the exported PDF) to confirm the glyph actually used, before Phase
-1 treats it as final. Flagged, not blocking: every example in §7 parses identically regardless of
-which glyph ultimately wins, since `EQ` behaves as an ordinary infix comparison token throughout.
+`EQ` was a provisional assignment (🟰, Heavy Equals Sign) pending a founder look at the original
+Gemini chat transcript — the source PDF's own text-extraction lost the actual equality glyph
+everywhere it appears (rendered as an empty parenthetical in five separate places). **Founder
+real-time, 2026-08-30: "actually use ⚓ as the missing equality emoji EQ in the LO grammar"** —
+`EQ` is now ⚓ (Anchor, U+2693), final, not provisional. Every worked example in §7 and every
+existing `.llll`/test string using 🟰 needs updating to ⚓ — real, mechanical, not a semantic
+change, since `EQ` always behaved as an ordinary infix comparison token regardless of glyph.
 
 ## 2. Grammar overview (EBNF)
 
@@ -136,6 +134,22 @@ TypeSig      ::= UNION TypeAtom TypeAtom+      (* 2+ members, e.g. DOOR UNION ST
 TypeAtom     ::= SCALAR | VECTOR | MATRIX | PATTERN | I32 | STRING | FUNC | VOID
 
 Expr         ::= Ternary
+               | Let
+
+(* Let -- real variable binding, added 2026-08-30 (founder real-time: "use ✨ for LET"). Real,
+   deliberate architectural simplification over the source spec's own De Bruijn/environment-
+   matrix `let`-lowering scheme (LoLanguageSpec.pdf's own real, named "explodes into a massive...
+   chain" blowup risk): that scheme exists because LO's ORIGINAL target (raw base4 ternaries) had
+   no `let` of its own. LO's REAL target as of Phase 1 is PARENA, which already has real, working
+   `let` -- so LO's own `Let` lowers DIRECTLY to a real PARENA `(let [x v] body)`, sidestepping
+   the blowup risk entirely rather than solving it. Real, narrow v0 scope: exactly one active
+   binding at a time. A bare MAGNET (no operands, distinct from `MagnetExpr`'s own
+   `VectorLit MAGNET Value` row-extraction form) inside `body` refers to the NEAREST enclosing
+   `Let`'s own bound value -- nesting shadows (an inner `Let` hides an outer one's binding
+   completely once entered; there is no way to reach past it to an outer binding). Real, honest,
+   deliberately deferred: named binding/multiple simultaneous bindings/reaching an outer binding
+   through a nested one -- real, separate follow-ups, not attempted here. *)
+Let          ::= LET Value Expr
 
 Ternary      ::= Cond QUERY Expr COLON Expr
                | Value
@@ -149,8 +163,13 @@ Value        ::= Labeled
                | State
                | VectorLit
                | MagnetExpr
+               | LetRef                          (* bare MAGNET: the nearest enclosing Let's
+                                                     bound value, added 2026-08-30 *)
                | Ternary                        (* a ternary nests as a value: parenthesization
                                                     is purely by token adjacency, see §3 *)
+
+LetRef       ::= MAGNET                          (* no operands -- distinct from MagnetExpr's
+                                                     own VectorLit MAGNET Value shape *)
 
 Labeled      ::= TypeAtom LABEL Value
 

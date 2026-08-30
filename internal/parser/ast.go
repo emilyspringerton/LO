@@ -63,6 +63,22 @@ type VoidExpr struct{}
 
 func (VoidExpr) isExpr() {}
 
+// Let is GRAMMAR.md §2's `Let ::= LET Value Expr`, added 2026-08-30 (founder real-time: "use ✨
+// for LET"). Real, narrow v0: exactly one active binding; a `LetRef` inside `Body` refers to
+// this binding, and nesting shadows (an inner Let hides an outer one completely).
+type Let struct {
+	Bound Expr
+	Body  Expr
+}
+
+func (Let) isExpr() {}
+
+// LetRef is GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands) — a reference to the
+// nearest enclosing Let's own bound value.
+type LetRef struct{}
+
+func (LetRef) isExpr() {}
+
 // Program is GRAMMAR.md §2's top-level `TypedExpr` — an optional Door plus a body Expr.
 type Program struct {
 	DoorType TypeAtom // TypeInvalid if no Door was present

@@ -31,7 +31,8 @@ var tokenTable = map[rune]Kind{
 	0x1F3AF: KindDot,      // 🎯
 	0x1F9EE: KindMatmul,   // 🧮
 	0x2696:  KindDimlen,   // ⚖
-	0x1F7F0: KindEq,       // 🟰 (provisional -- GRAMMAR.md §1.3)
+	0x2693:  KindEq,       // ⚓ (founder-confirmed 2026-08-30, GRAMMAR.md §1.3)
+	0x2728:  KindLet,      // ✨
 	0x1F50D: KindMatch,    // 🔍
 	0x1F4A7: KindScalar,   // 💧
 	0x1F30A: KindVector,   // 🌊

@@ -86,9 +86,28 @@ func (p *parser) typeAtom() (TypeAtom, bool) {
 	}
 }
 
-// expr implements GRAMMAR.md §2's `Expr ::= Ternary`.
+// expr implements GRAMMAR.md §2's `Expr ::= Ternary | Let`.
 func (p *parser) expr() (Expr, error) {
+	if p.peek().Kind == lexer.KindLet {
+		return p.let_()
+	}
 	return p.ternary()
+}
+
+// let_ implements GRAMMAR.md §2's `Let ::= LET Value Expr` (added 2026-08-30, founder real-time:
+// "use ✨ for LET"). Named `let_` (trailing underscore) since `let` collides with no Go keyword
+// but reads awkwardly as a method name otherwise.
+func (p *parser) let_() (Expr, error) {
+	p.next() // consume LET
+	bound, err := p.value()
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.expr()
+	if err != nil {
+		return nil, err
+	}
+	return Let{Bound: bound, Body: body}, nil
 }
 
 // ternary implements GRAMMAR.md §2's `Ternary ::= Cond QUERY Expr COLON Expr | Value` and §3.2's
@@ -140,11 +159,22 @@ func (p *parser) value() (Expr, error) {
 		return VoidExpr{}, nil
 	}
 
-	if tok.Kind != lexer.KindState {
-		return nil, p.errf("expected a base4 state or VOID, got %s", tok.Kind)
+	// GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands) -- distinct from `MagnetExpr`'s
+	// own `VectorLit MAGNET Value` row-extraction shape (not yet implemented by this parser;
+	// a bare MAGNET here always means "the nearest enclosing Let's bound value"). Real, found-
+	// live fix: a `LetRef` is a real `Value` in its own right, so (like `State` below) it must
+	// also be checked for a following arith operator -- an earlier draft returned immediately
+	// here, silently dropping `🧲 🔀 🌒`'s own trailing `🔀 🌒` instead of parsing it as an Arith.
+	var left Expr
+	if tok.Kind == lexer.KindMagnet {
+		p.next()
+		left = LetRef{}
+	} else if tok.Kind == lexer.KindState {
+		p.next()
+		left = State{Value: tok.State}
+	} else {
+		return nil, p.errf("expected a base4 state, VOID, or MAGNET, got %s", tok.Kind)
 	}
-	p.next()
-	left := Expr(State{Value: tok.State})
 
 	if op := p.peek().Kind; isArithOp(op) {
 		p.next()

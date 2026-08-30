@@ -28,7 +28,8 @@ const (
 	KindDot          // 🎯
 	KindMatmul       // 🧮
 	KindDimlen       // ⚖️
-	KindEq           // 🟰 (provisional glyph -- see GRAMMAR.md §1.3)
+	KindEq           // ⚓ (founder-confirmed 2026-08-30, GRAMMAR.md §1.3)
+	KindLet          // ✨ -- real variable binding, GRAMMAR.md §2's Let production
 	KindMatch        // 🔍
 	KindScalar       // 💧
 	KindVector       // 🌊
@@ -92,6 +93,8 @@ func (k Kind) String() string {
 		return "DIMLEN"
 	case KindEq:
 		return "EQ"
+	case KindLet:
+		return "LET"
 	case KindMatch:
 		return "MATCH"
 	case KindScalar:

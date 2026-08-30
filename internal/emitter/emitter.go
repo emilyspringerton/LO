@@ -64,6 +64,27 @@ func emitExpr(e parser.Expr) (string, error) {
 	case parser.State:
 		return fmt.Sprintf("%d", v.Value), nil
 
+	case parser.Let:
+		// Real, direct lowering to PARENA's own `let` (see NORTHSTAR.md/GRAMMAR.md's own
+		// "Let" doc comment for why this sidesteps the source spec's own De Bruijn/environment-
+		// matrix blowup risk entirely). A single fixed binding name `x` is enough for this v0's
+		// real, narrow "exactly one active binding, innermost shadows" scope -- PARENA's own
+		// `let` already shadows correctly on a repeated name, so nested LO `Let`s translate to
+		// nested PARENA `let`s with the SAME name, and `LetRef` always resolves to the
+		// innermost one, matching GRAMMAR.md's own documented semantics exactly.
+		bound, err := emitExpr(v.Bound)
+		if err != nil {
+			return "", err
+		}
+		body, err := emitExpr(v.Body)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(let [x %s] %s)", bound, body), nil
+
+	case parser.LetRef:
+		return "x", nil
+
 	case parser.VoidExpr:
 		// Real, honest v0 stand-in: LO's VOID has no direct PARENA I32 equivalent in this
 		// scalar-only path -- 0 is used as a placeholder, named here rather than silently

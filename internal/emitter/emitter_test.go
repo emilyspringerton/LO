@@ -15,7 +15,7 @@ import (
 // expected .prn shape for a real, GRAMMAR.md-consistent LO program (see parser_test.go's own
 // doc comment on the real examples/xor_check.llll notation discrepancy this test sidesteps).
 func TestEmitGrammarConsistentXorExample(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
+	toks, err := lexer.Lex("🚪 🔢 🌒 ⚓ 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
@@ -38,10 +38,66 @@ func TestEmitGrammarConsistentXorExample(t *testing.T) {
 // TestEmitCompilesThroughParenaAndBurrow -- Phase 1's own real, concrete acceptance bar
 // (NORTHSTAR.md): "a real LO program... compiles to real .prn, and that .prn compiles cleanly
 // through BOTH parena build (C/TS/Java) and burrow build (Go)." Skipped (not failed) if the
+// TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
+// real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
+// then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,
+// confirming the actual exit code matches the hand-computed result (S2 XOR S1 = 2^1 = 3).
+// Skipped, not failed, if the parena binary/stdlib aren't reachable in this environment.
+func TestEmitLetRunsCorrectly(t *testing.T) {
+	toks, err := lexer.Lex("🚪 🔢 ✨ 🌓 🧲 🔀 🌒;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := parser.Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	prnSource, err := Emit(prog)
+	if err != nil {
+		t.Fatalf("unexpected emit error: %v", err)
+	}
+
+	algebraPath := "../../../PARENA/stdlib/base4/algebra.prn"
+	parenaBin := "../../../PARENA/parena"
+	if _, err := os.Stat(algebraPath); err != nil {
+		t.Skipf("PARENA/stdlib/base4/algebra.prn not found, skipping real cross-compile check: %v", err)
+	}
+	if _, err := os.Stat(parenaBin); err != nil {
+		t.Skipf("PARENA/parena binary not found (run `make build` in PARENA first): %v", err)
+	}
+
+	dir := t.TempDir()
+	prnPath := filepath.Join(dir, "main.prn")
+	if err := os.WriteFile(prnPath, []byte(prnSource), 0o644); err != nil {
+		t.Fatalf("could not write generated .prn: %v", err)
+	}
+	outC := filepath.Join(dir, "main.c")
+	cmd := exec.Command(parenaBin, "build", algebraPath, prnPath, "-o", outC)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("parena build failed: %v\n%s", err, out)
+	}
+
+	outBin := filepath.Join(dir, "main")
+	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
+	runtimeDir := "../../../PARENA/runtime"
+	cc := exec.Command("cc", "-std=c99", outC, runtimeC, "-I", runtimeDir, "-o", outBin, "-lm")
+	if out, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s", err, out)
+	}
+
+	run := exec.Command(outBin)
+	_ = run.Run()
+	exitCode := run.ProcessState.ExitCode()
+	// Hand-computed: bind S2 (2), then S2 XOR4 S1 = 2^1 = 3 (binary 10 ^ 01 = 11).
+	if exitCode != 3 {
+		t.Errorf("expected exit code 3 (S2 XOR4 S1), got %d", exitCode)
+	}
+}
+
 // parena/burrow binaries aren't reachable in this environment, rather than silently passing --
 // a real, honest environment-dependent check.
 func TestEmitCompilesThroughParenaAndBurrow(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
+	toks, err := lexer.Lex("🚪 🔢 🌒 ⚓ 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}

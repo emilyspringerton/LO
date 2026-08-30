@@ -7,7 +7,7 @@ import (
 
 // Real, hand-verified against GRAMMAR.md §7.1's own worked derivation.
 func TestLexFirstXorExample(t *testing.T) {
-	src := "🌒 🟰 🌓 ❓ 🌒 🔀 🌔 : 🌔 🟰 🌔 ❓ 🔗 🌒 : 🌑"
+	src := "🌒 ⚓ 🌓 ❓ 🌒 🔀 🌔 : 🌔 ⚓ 🌔 ❓ 🔗 🌒 : 🌑"
 	toks, err := Lex(src)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
