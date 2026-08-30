@@ -1,5 +1,7 @@
 # LO
 
+![LO](assets/lo-readme-art.png)
+
 A hyper-minimalist esolang — emojis, colons, and one literal string as the entire alphabet,
 everything a nested ternary over a 4-symbol base4 state space — sitting under a real, higher-level
 Lisp-like frontend (`qi`) and compiling down to real `.prn` source for the existing
