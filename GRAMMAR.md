@@ -142,13 +142,12 @@ Expr         ::= Ternary
    chain" blowup risk): that scheme exists because LO's ORIGINAL target (raw base4 ternaries) had
    no `let` of its own. LO's REAL target as of Phase 1 is PARENA, which already has real, working
    `let` -- so LO's own `Let` lowers DIRECTLY to a real PARENA `(let [x v] body)`, sidestepping
-   the blowup risk entirely rather than solving it. Real, narrow v0 scope: exactly one active
-   binding at a time. A bare MAGNET (no operands, distinct from `MagnetExpr`'s own
-   `VectorLit MAGNET Value` row-extraction form) inside `body` refers to the NEAREST enclosing
-   `Let`'s own bound value -- nesting shadows (an inner `Let` hides an outer one's binding
-   completely once entered; there is no way to reach past it to an outer binding). Real, honest,
-   deliberately deferred: named binding/multiple simultaneous bindings/reaching an outer binding
-   through a nested one -- real, separate follow-ups, not attempted here. *)
+   the blowup risk entirely rather than solving it. Each `Let` introduces one new binding one
+   level deeper; a `LetRef` inside `body` can reach ANY enclosing binding by depth (0 = nearest),
+   not just the nearest one -- see `LetRef`'s own production below for the real reason this
+   changed from the original "innermost only" v0 the same day. Real, honest, still deliberately
+   deferred: real NAMED bindings (today's depth-index scheme has no real names, just position)
+   and multiple simultaneous bindings per `Let` -- real, separate follow-ups, not attempted here. *)
 Let          ::= LET Value Expr
 
 Ternary      ::= Cond QUERY Expr COLON Expr
@@ -163,13 +162,22 @@ Value        ::= Labeled
                | State
                | VectorLit
                | MagnetExpr
-               | LetRef                          (* bare MAGNET: the nearest enclosing Let's
-                                                     bound value, added 2026-08-30 *)
+               | LetRef                          (* a reference to an enclosing Let's bound
+                                                     value, added 2026-08-30, extended same day *)
                | Ternary                        (* a ternary nests as a value: parenthesization
                                                     is purely by token adjacency, see §3 *)
 
-LetRef       ::= MAGNET                          (* no operands -- distinct from MagnetExpr's
-                                                     own VectorLit MAGNET Value shape *)
+(* LetRef -- extended 2026-08-30 (same day it was added) to reach OUTER Let bindings, not just
+   the nearest: a bare MAGNET is Depth 0 (the nearest enclosing Let, unchanged/backward
+   compatible); `VectorLit MAGNET` (a real, deliberate reuse of MagnetExpr's own already-specified
+   TOKEN shape -- an index-vector immediately before MAGNET -- simplified to a single-state
+   vector as a small depth index rather than a full row-extraction target) sets Depth to that
+   state's own value, counting outward from the innermost active Let. Referencing a depth with no
+   real enclosing Let is a real, honest EMIT-time error (this production doesn't itself know how
+   many Lets are active), not silently clamped. A multi-state vector here, or one not immediately
+   followed by MAGNET, is MagnetExpr's own real row-extraction shape -- still not implemented. *)
+LetRef       ::= MAGNET
+               | VectorLit MAGNET
 
 Labeled      ::= TypeAtom LABEL Value
 

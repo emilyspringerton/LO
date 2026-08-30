@@ -182,16 +182,35 @@ func (p *parser) primary() (Expr, error) {
 		return VoidExpr{}, nil
 	}
 
-	// GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands) -- distinct from `MagnetExpr`'s
-	// own `VectorLit MAGNET Value` row-extraction shape (not yet implemented by this parser; a
-	// bare MAGNET here always means "the nearest enclosing Let's bound value").
+	// GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands): the nearest (Depth 0) enclosing
+	// Let's own bound value.
 	if tok.Kind == lexer.KindMagnet {
 		p.next()
-		return LetRef{}, nil
+		return LetRef{Depth: 0}, nil
+	}
+
+	// GRAMMAR.md §2's `LetRef ::= VectorLit MAGNET`, extended 2026-08-30 to reach OUTER Let
+	// bindings: a single-state VectorLit immediately followed by MAGNET sets Depth to that
+	// state's value. Real, narrow v0: exactly one state -- a multi-state VectorLit here (or one
+	// not immediately followed by MAGNET) is `MagnetExpr`'s own real row-extraction shape,
+	// genuinely not yet implemented, so this returns a real, honest parse error rather than
+	// guessing at a different production.
+	if tok.Kind == lexer.KindVecLit {
+		p.next()
+		stateTok := p.peek()
+		if stateTok.Kind != lexer.KindState {
+			return nil, p.errf("expected exactly one base4 state after the vector keyword (a depth-index LetRef), got %s", stateTok.Kind)
+		}
+		p.next()
+		if p.peek().Kind != lexer.KindMagnet {
+			return nil, p.errf("expected MAGNET immediately after a single-state vector (MagnetExpr's own multi-state row-extraction shape is not yet implemented), got %s", p.peek().Kind)
+		}
+		p.next()
+		return LetRef{Depth: stateTok.State}, nil
 	}
 
 	if tok.Kind != lexer.KindState {
-		return nil, p.errf("expected a base4 state, VOID, or MAGNET, got %s", tok.Kind)
+		return nil, p.errf("expected a base4 state, VOID, MAGNET, or a depth-index vector, got %s", tok.Kind)
 	}
 	p.next()
 	return State{Value: tok.State}, nil

@@ -32,7 +32,7 @@ func Emit(prog *parser.Program) (string, error) {
 		return "", &Error{Msg: "only a DOOR I32 (or no Door) is supported in this v0"}
 	}
 
-	body, err := emitExpr(prog.Body)
+	body, err := emitExpr(prog.Body, 0)
 	if err != nil {
 		return "", err
 	}
@@ -59,7 +59,13 @@ func Emit(prog *parser.Program) (string, error) {
 // matching 1 XOR 3 = 2 by hand). A real, useful coincidence for this v0's demo purposes, not a
 // documented compiler guarantee -- don't rely on it surviving a future emit.c change.
 
-func emitExpr(e parser.Expr) (string, error) {
+// emitExpr takes `depth`, the number of Let bindings enclosing `e` at this point in the tree
+// (0 at the program's own top level) -- needed so `Let` can pick a fresh, non-colliding PARENA
+// variable name per nesting level (`x0`, `x1`, ...) and `LetRef` can resolve its own `Depth`
+// (0 = innermost) to the right one, extended 2026-08-30 to reach outer bindings, not just the
+// nearest -- see `parser.LetRef`'s own doc comment for the real reason this changed from a
+// single always-shadowing `x`.
+func emitExpr(e parser.Expr, depth int) (string, error) {
 	switch v := e.(type) {
 	case parser.State:
 		return fmt.Sprintf("%d", v.Value), nil
@@ -67,23 +73,26 @@ func emitExpr(e parser.Expr) (string, error) {
 	case parser.Let:
 		// Real, direct lowering to PARENA's own `let` (see NORTHSTAR.md/GRAMMAR.md's own
 		// "Let" doc comment for why this sidesteps the source spec's own De Bruijn/environment-
-		// matrix blowup risk entirely). A single fixed binding name `x` is enough for this v0's
-		// real, narrow "exactly one active binding, innermost shadows" scope -- PARENA's own
-		// `let` already shadows correctly on a repeated name, so nested LO `Let`s translate to
-		// nested PARENA `let`s with the SAME name, and `LetRef` always resolves to the
-		// innermost one, matching GRAMMAR.md's own documented semantics exactly.
-		bound, err := emitExpr(v.Bound)
+		// matrix blowup risk entirely). Bound is emitted at the CURRENT depth (it must not see
+		// its own binding); Body is emitted one level deeper.
+		bound, err := emitExpr(v.Bound, depth)
 		if err != nil {
 			return "", err
 		}
-		body, err := emitExpr(v.Body)
+		body, err := emitExpr(v.Body, depth+1)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("(let [x %s] %s)", bound, body), nil
+		return fmt.Sprintf("(let [x%d %s] %s)", depth, bound, body), nil
 
 	case parser.LetRef:
-		return "x", nil
+		// Depth 0 = innermost = the most-recently-introduced binding, x{depth-1}; Depth K = K
+		// levels further out, x{depth-1-K}. Real, honest bounds check: referencing a depth with
+		// no real enclosing Let is a real emit-time error, not silently clamped to 0 or wrapped.
+		if v.Depth >= depth {
+			return "", &Error{Msg: fmt.Sprintf("LetRef depth %d has no enclosing Let (only %d active here)", v.Depth, depth)}
+		}
+		return fmt.Sprintf("x%d", depth-1-v.Depth), nil
 
 	case parser.VoidExpr:
 		// Real, honest v0 stand-in: LO's VOID has no direct PARENA I32 equivalent in this
@@ -93,22 +102,22 @@ func emitExpr(e parser.Expr) (string, error) {
 		return "0", nil
 
 	case parser.Eq:
-		left, err := emitExpr(v.Left)
+		left, err := emitExpr(v.Left, depth)
 		if err != nil {
 			return "", err
 		}
-		right, err := emitExpr(v.Right)
+		right, err := emitExpr(v.Right, depth)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("(= %s %s)", left, right), nil
 
 	case parser.Arith:
-		left, err := emitExpr(v.Left)
+		left, err := emitExpr(v.Left, depth)
 		if err != nil {
 			return "", err
 		}
-		right, err := emitExpr(v.Right)
+		right, err := emitExpr(v.Right, depth)
 		if err != nil {
 			return "", err
 		}
@@ -119,15 +128,15 @@ func emitExpr(e parser.Expr) (string, error) {
 		return fmt.Sprintf("(base4/algebra/%s %s %s)", fn, left, right), nil
 
 	case parser.Ternary:
-		cond, err := emitExpr(v.Cond)
+		cond, err := emitExpr(v.Cond, depth)
 		if err != nil {
 			return "", err
 		}
-		trueExpr, err := emitExpr(v.True)
+		trueExpr, err := emitExpr(v.True, depth)
 		if err != nil {
 			return "", err
 		}
-		falseExpr, err := emitExpr(v.False)
+		falseExpr, err := emitExpr(v.False, depth)
 		if err != nil {
 			return "", err
 		}

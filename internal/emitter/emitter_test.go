@@ -114,6 +114,18 @@ func TestEmitArithChainRunsCorrectly(t *testing.T) {
 	}
 }
 
+// TestEmitLetRefReachesOuterBindingRunsCorrectly -- real, live verification of the depth-index
+// LetRef extension: binds S2 (outer), then S1 (inner), then XORs the OUTER binding (via
+// `vec PARENA CONSTRUCT 312 S1 🧲`, Depth 1) against the INNER one (bare 🧲, Depth 0) -- proving
+// the outer binding is genuinely still reachable after a nested Let, not just that it parses.
+func TestEmitLetRefReachesOuterBindingRunsCorrectly(t *testing.T) {
+	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 ✨ 🌓 ✨ 🌒 vec PARENA CONSTRUCT 312 🌒 🧲 🔀 🧲;")
+	// Hand-computed: outer x0=S2(2), inner x1=S1(1), x0 XOR4 x1 = 2^1 = 3.
+	if exitCode != 3 {
+		t.Errorf("expected exit code 3 (outer S2 XOR4 inner S1), got %d", exitCode)
+	}
+}
+
 // parena/burrow binaries aren't reachable in this environment, rather than silently passing --
 // a real, honest environment-dependent check.
 func TestEmitCompilesThroughParenaAndBurrow(t *testing.T) {

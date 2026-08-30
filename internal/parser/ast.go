@@ -64,8 +64,10 @@ type VoidExpr struct{}
 func (VoidExpr) isExpr() {}
 
 // Let is GRAMMAR.md §2's `Let ::= LET Value Expr`, added 2026-08-30 (founder real-time: "use ✨
-// for LET"). Real, narrow v0: exactly one active binding; a `LetRef` inside `Body` refers to
-// this binding, and nesting shadows (an inner Let hides an outer one completely).
+// for LET"). Each `Let` introduces one new binding at the next nesting depth; a `LetRef` inside
+// `Body` refers to any enclosing binding by depth (0 = innermost), not just the nearest one --
+// see `LetRef`'s own doc comment for the real reason this changed from the original "innermost
+// only, no reaching outer" v0.
 type Let struct {
 	Bound Expr
 	Body  Expr
@@ -73,9 +75,20 @@ type Let struct {
 
 func (Let) isExpr() {}
 
-// LetRef is GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands) — a reference to the
-// nearest enclosing Let's own bound value.
-type LetRef struct{}
+// LetRef is GRAMMAR.md §2's `LetRef ::= MAGNET | VectorLit MAGNET`, extended 2026-08-30 to reach
+// OUTER Let bindings, not just the innermost. A bare MAGNET is `Depth: 0` (the nearest enclosing
+// Let — unchanged, backward compatible with every existing bare-MAGNET program). `VectorLit
+// MAGNET` (a single-state vector immediately followed by MAGNET, e.g. `vec PARENA CONSTRUCT 312
+// 🌒 🧲`) sets `Depth` to that state's own value (1, 2, or 3) — real, deliberate reuse of
+// `GRAMMAR.md`'s own already-specified `MagnetExpr ::= VectorLit MAGNET Value` token SHAPE
+// (index-vector immediately before MAGNET), simplified for this v0's real, narrow scope: a
+// single-state vector as a small depth index, not a full row-extraction target. `Depth` counts
+// OUTWARD from the innermost active Let at the point this LetRef appears — referencing a depth
+// that doesn't exist (fewer than `Depth+1` enclosing Lets) is a real, honest emit-time error, not
+// silently clamped or wrapped.
+type LetRef struct {
+	Depth int
+}
 
 func (LetRef) isExpr() {}
 

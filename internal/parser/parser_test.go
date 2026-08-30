@@ -168,12 +168,11 @@ func TestParseArithChain(t *testing.T) {
 
 // TestParseArithOverTwoLetRefs -- real, found-live fix: a bare MAGNET (LetRef) on BOTH sides of
 // an Arith must parse -- an earlier draft only accepted a bare State as an Arith's right
-// operand, so this failed. Real, honest naming caveat: this only proves the PARSE succeeds, not
-// that the two MAGNETs reach two DIFFERENT bindings -- per GRAMMAR.md's own documented Let
-// semantics ("an inner Let hides an outer one's binding completely"), both MAGNETs inside this
-// innermost body resolve to the SAME (innermost) binding once emitted, since nesting shadows
-// rather than exposing both. Reaching an outer binding from inside a nested one is a real, named,
-// separate follow-up (GRAMMAR.md's own Let doc comment), not something this test claims to prove.
+// operand, so this failed. Real, honest naming caveat, UPDATED: both MAGNETs here are bare
+// (Depth 0), so they both still resolve to the SAME (innermost) binding once emitted -- that's
+// no longer LetRef's own real limit, though (see TestParseLetRefReachesOuterBinding below):
+// LetRef now has a real Depth field, and a `VectorLit MAGNET` form reaches an outer binding.
+// This test only proves a bare-MAGNET-on-both-sides Arith parses at all, nothing more.
 func TestParseArithOverTwoLetRefs(t *testing.T) {
 	toks, err := lexer.Lex("✨ 🌒 ✨ 🌓 🧲 🔀 🧲;")
 	if err != nil {
@@ -194,5 +193,35 @@ func TestParseArithOverTwoLetRefs(t *testing.T) {
 	}
 	if _, ok := arith.Right.(LetRef); !ok {
 		t.Errorf("expected the Arith's right operand to be a LetRef, got %T", arith.Right)
+	}
+}
+
+// TestParseLetRefReachesOuterBinding -- the real point of the depth-index LetRef extension: a
+// `VectorLit MAGNET` (single-state vector immediately before MAGNET) reaches an OUTER Let's
+// binding, closing the exact limitation `TestParseArithOverTwoLetRefs`'s own doc comment named.
+// `vec PARENA CONSTRUCT 312 S1 🧲` inside the innermost body means Depth 1 (one level out);
+// a bare `🧲` still means Depth 0 (innermost).
+func TestParseLetRefReachesOuterBinding(t *testing.T) {
+	toks, err := lexer.Lex("✨ 🌓 ✨ 🌒 vec PARENA CONSTRUCT 312 🌒 🧲 🔀 🧲;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	outer := prog.Body.(Let)
+	inner := outer.Body.(Let)
+	arith, ok := inner.Body.(Arith)
+	if !ok {
+		t.Fatalf("expected the innermost body to be an Arith, got %T", inner.Body)
+	}
+	left, ok := arith.Left.(LetRef)
+	if !ok || left.Depth != 1 {
+		t.Errorf("expected the left operand to be LetRef{Depth: 1} (the outer binding), got %+v", arith.Left)
+	}
+	right, ok := arith.Right.(LetRef)
+	if !ok || right.Depth != 0 {
+		t.Errorf("expected the right operand to be LetRef{Depth: 0} (the inner binding), got %+v", arith.Right)
 	}
 }
