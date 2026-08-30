@@ -87,6 +87,12 @@ func Lex(src string) ([]Token, error) {
 			continue
 		}
 
+		if r == ';' {
+			toks = append(toks, Token{Kind: KindSemi, Pos: i})
+			i++
+			continue
+		}
+
 		if matchVecLit(runes, i) {
 			toks = append(toks, Token{Kind: KindVecLit, Pos: i})
 			i += len([]rune(vecLit))

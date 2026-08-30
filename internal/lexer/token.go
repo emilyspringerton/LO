@@ -16,6 +16,7 @@ const (
 	KindInvalid Kind = iota
 	KindVecLit       // the literal ASCII "vec PARENA CONSTRUCT 312"
 	KindColon        // :
+	KindSemi         // ; -- required Program terminator (GRAMMAR.md §1 item 3, §2's Program rule)
 	KindState        // 🌑🌒🌓🌔 -- see Token.State for which of 0-3
 	KindQuery        // ❓
 	KindPlus4        // ➕
@@ -65,6 +66,8 @@ func (k Kind) String() string {
 		return "VECLIT"
 	case KindColon:
 		return "COLON"
+	case KindSemi:
+		return "SEMI"
 	case KindState:
 		return "STATE"
 	case KindQuery:

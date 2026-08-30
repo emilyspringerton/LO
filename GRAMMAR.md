@@ -13,7 +13,7 @@ identically, every time.*
 
 ## 1. Lexical grammar
 
-LO source is a sequence of Unicode scalar values. The lexer recognizes exactly three token
+LO source is a sequence of Unicode scalar values. The lexer recognizes exactly four token
 shapes; anything else is a fatal lex error (matching `LoLanguageSpec.pdf` §2's own "any other
 character results in a fatal syntax error").
 
@@ -23,7 +23,15 @@ character results in a fatal syntax error").
    (`VECLIT`) — LO has no standalone identifiers, so there is no ambiguity with matching `vec`
    or `PARENA` on their own.
 2. **The colon** — U+003A `:` (`COLON`), the ternary false-branch separator.
-3. **Emoji tokens** — every other token in the language. §1.1 gives the exact codepoint table;
+3. **The semicolon** — U+003B `;` (`SEMI`), required to terminate every top-level `Program`
+   (§2). Founder real-time, 2026-08-30, after Phase 1's compiler landed: "also require
+   semicolons in LO." Real, deliberate design call, not the source material's own idea — every
+   worked example in `LoLanguageSpec.pdf` and every prior version of this grammar omitted a
+   terminator entirely, relying on end-of-input to mark the end of the one real expression a
+   program was. A required trailing `SEMI` is added here as a real, explicit statement
+   terminator, matching the common C-family convention, ahead of Phase 2 (`qi`) ever needing to
+   sequence more than one top-level form.
+4. **Emoji tokens** — every other token in the language. §1.1 gives the exact codepoint table;
    §1.2 gives the matching rule that resolves `NORTHSTAR.md` finding #2 (emoji tokenization
    ambiguity).
 
@@ -115,7 +123,7 @@ which glyph ultimately wins, since `EQ` behaves as an ordinary infix comparison 
 ## 2. Grammar overview (EBNF)
 
 ```
-Program      ::= TypedExpr
+Program      ::= TypedExpr SEMI
 
 TypedExpr    ::= Door Expr
                | Expr
@@ -288,7 +296,11 @@ distinct "close" glyph or a counting scheme, and the source material never propo
 ## 7. Worked derivations
 
 Three of the source doc's own examples, re-derived against the grammar above, to satisfy the
-Phase 0 acceptance bar directly (not just assert it).
+Phase 0 acceptance bar directly (not just assert it). All three examples below predate the
+required trailing `SEMI` (§1's item 3, added later, after Phase 1's compiler landed) — each
+`Source:` line is quoted faithfully as the original source material wrote it; under the current
+grammar every one of them needs a trailing `;` appended before `Program`'s own `TypedExpr SEMI`
+production accepts it.
 
 ### 7.1 The first nested-ternary example
 

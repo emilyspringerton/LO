@@ -15,7 +15,7 @@ import (
 // expected .prn shape for a real, GRAMMAR.md-consistent LO program (see parser_test.go's own
 // doc comment on the real examples/xor_check.llll notation discrepancy this test sidesteps).
 func TestEmitGrammarConsistentXorExample(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑")
+	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestEmitGrammarConsistentXorExample(t *testing.T) {
 // parena/burrow binaries aren't reachable in this environment, rather than silently passing --
 // a real, honest environment-dependent check.
 func TestEmitCompilesThroughParenaAndBurrow(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑")
+	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}

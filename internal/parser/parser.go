@@ -41,8 +41,15 @@ func Parse(toks []lexer.Token) (*Program, error) {
 	}
 	prog.Body = expr
 
+	// GRAMMAR.md §2's `Program ::= TypedExpr SEMI` -- founder real-time, 2026-08-30: "also
+	// require semicolons in LO." A required trailing terminator, not optional.
+	if p.peek().Kind != lexer.KindSemi {
+		return nil, p.errf("expected a trailing SEMI (;) to terminate the program")
+	}
+	p.next()
+
 	if p.pos != len(p.toks) {
-		return nil, p.errf("unexpected trailing tokens after a complete expression")
+		return nil, p.errf("unexpected trailing tokens after the terminating SEMI")
 	}
 	return prog, nil
 }

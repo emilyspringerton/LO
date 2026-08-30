@@ -17,7 +17,7 @@ import (
 // real, named follow-up: reconcile examples/xor_check.llll with GRAMMAR.md once decided which
 // notation LO actually wants.
 func TestParseGrammarConsistentXorExample(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑")
+	toks, err := lexer.Lex("🚪 🔢 🌒 🟰 🌒 ❓ 🌒 🔀 🌔 : 🌑 ;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
@@ -53,11 +53,40 @@ func TestParseGrammarConsistentXorExample(t *testing.T) {
 }
 
 func TestParseTrailingTokensIsError(t *testing.T) {
-	toks, err := lexer.Lex("🌑 🌑")
+	toks, err := lexer.Lex("🌑 🌑;")
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
 	if _, err := Parse(toks); err == nil {
 		t.Fatal("expected a parse error for trailing tokens after a complete expression")
+	}
+}
+
+// TestParseMissingSemiIsError -- GRAMMAR.md §2's `Program ::= TypedExpr SEMI` (founder
+// real-time: "also require semicolons in LO") -- a program with no trailing `;` is a real
+// parse error, not silently accepted.
+func TestParseMissingSemiIsError(t *testing.T) {
+	toks, err := lexer.Lex("🌑")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	if _, err := Parse(toks); err == nil {
+		t.Fatal("expected a parse error for a program with no trailing SEMI")
+	}
+}
+
+// TestParseWithSemiSucceeds -- the same program as above, but with the now-required trailing
+// SEMI, should parse cleanly.
+func TestParseWithSemiSucceeds(t *testing.T) {
+	toks, err := lexer.Lex("🌑;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if s, ok := prog.Body.(State); !ok || s.Value != 0 {
+		t.Errorf("expected the body to be S0, got %+v", prog.Body)
 	}
 }
