@@ -38,13 +38,14 @@ func TestEmitGrammarConsistentXorExample(t *testing.T) {
 // TestEmitCompilesThroughParenaAndBurrow -- Phase 1's own real, concrete acceptance bar
 // (NORTHSTAR.md): "a real LO program... compiles to real .prn, and that .prn compiles cleanly
 // through BOTH parena build (C/TS/Java) and burrow build (Go)." Skipped (not failed) if the
-// TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
-// real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
-// then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,
-// confirming the actual exit code matches the hand-computed result (S2 XOR S1 = 2^1 = 3).
-// Skipped, not failed, if the parena binary/stdlib aren't reachable in this environment.
-func TestEmitLetRunsCorrectly(t *testing.T) {
-	toks, err := lexer.Lex("🚪 🔢 ✨ 🌓 🧲 🔀 🌒;")
+// compileRunAndGetExitCode is the shared real "lex -> parse -> emit -> parena build -> cc ->
+// execute" pipeline both live end-to-end tests below use, factored out to avoid duplicating the
+// ~40 lines of real subprocess plumbing per test. Skips (not fails) the calling test if the
+// parena binary/stdlib aren't reachable in this environment -- a real, honest environment-
+// dependent check, not a silently-passing one.
+func compileRunAndGetExitCode(t *testing.T, src string) int {
+	t.Helper()
+	toks, err := lexer.Lex(src)
 	if err != nil {
 		t.Fatalf("unexpected lex error: %v", err)
 	}
@@ -87,10 +88,29 @@ func TestEmitLetRunsCorrectly(t *testing.T) {
 
 	run := exec.Command(outBin)
 	_ = run.Run()
-	exitCode := run.ProcessState.ExitCode()
+	return run.ProcessState.ExitCode()
+}
+
+// TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
+// real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
+// then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,
+// confirming the actual exit code matches the hand-computed result (S2 XOR S1 = 2^1 = 3).
+func TestEmitLetRunsCorrectly(t *testing.T) {
+	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 ✨ 🌓 🧲 🔀 🌒;")
 	// Hand-computed: bind S2 (2), then S2 XOR4 S1 = 2^1 = 3 (binary 10 ^ 01 = 11).
 	if exitCode != 3 {
 		t.Errorf("expected exit code 3 (S2 XOR4 S1), got %d", exitCode)
+	}
+}
+
+// TestEmitArithChainRunsCorrectly -- real, live verification of the new left-associative arith
+// chain support: `S1 XOR4 S2 XOR4 S3` must actually COMPUTE as `(S1 XOR4 S2) XOR4 S3`, not just
+// parse that way.
+func TestEmitArithChainRunsCorrectly(t *testing.T) {
+	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 🌒 🔀 🌓 🔀 🌔;")
+	// Hand-computed: (S1 XOR4 S2) XOR4 S3 = (1^2)^3 = 3^3 = 0 (binary 01^10=11, 11^11=00).
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 ((S1 XOR4 S2) XOR4 S3), got %d", exitCode)
 	}
 }
 

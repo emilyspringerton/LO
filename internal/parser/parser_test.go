@@ -137,3 +137,62 @@ func TestParseNestedLetShadows(t *testing.T) {
 		t.Errorf("expected the inner Let's body to be a LetRef, got %T", inner.Body)
 	}
 }
+
+// TestParseArithChain -- GRAMMAR.md §3.3's own left-associative chain rule, real, found-live
+// fix over an earlier draft that only ever accepted one operator: `S1 XOR4 S2 XOR4 S3` must
+// parse as `(S1 XOR4 S2) XOR4 S3`, not error out on the second operator.
+func TestParseArithChain(t *testing.T) {
+	toks, err := lexer.Lex("🌒 🔀 🌓 🔀 🌔;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	outer, ok := prog.Body.(Arith)
+	if !ok {
+		t.Fatalf("expected the top-level node to be an Arith, got %T", prog.Body)
+	}
+	if outer.Right.(State).Value != 3 {
+		t.Errorf("expected the outer Arith's right operand to be S3, got %+v", outer.Right)
+	}
+	inner, ok := outer.Left.(Arith)
+	if !ok {
+		t.Fatalf("expected left-associativity: outer.Left should itself be an Arith, got %T", outer.Left)
+	}
+	if inner.Left.(State).Value != 1 || inner.Right.(State).Value != 2 {
+		t.Errorf("expected the inner Arith to be S1 XOR4 S2, got %+v", inner)
+	}
+}
+
+// TestParseArithOverTwoLetRefs -- real, found-live fix: a bare MAGNET (LetRef) on BOTH sides of
+// an Arith must parse -- an earlier draft only accepted a bare State as an Arith's right
+// operand, so this failed. Real, honest naming caveat: this only proves the PARSE succeeds, not
+// that the two MAGNETs reach two DIFFERENT bindings -- per GRAMMAR.md's own documented Let
+// semantics ("an inner Let hides an outer one's binding completely"), both MAGNETs inside this
+// innermost body resolve to the SAME (innermost) binding once emitted, since nesting shadows
+// rather than exposing both. Reaching an outer binding from inside a nested one is a real, named,
+// separate follow-up (GRAMMAR.md's own Let doc comment), not something this test claims to prove.
+func TestParseArithOverTwoLetRefs(t *testing.T) {
+	toks, err := lexer.Lex("✨ 🌒 ✨ 🌓 🧲 🔀 🧲;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	outer := prog.Body.(Let)
+	inner := outer.Body.(Let)
+	arith, ok := inner.Body.(Arith)
+	if !ok {
+		t.Fatalf("expected the innermost body to be an Arith, got %T", inner.Body)
+	}
+	if _, ok := arith.Left.(LetRef); !ok {
+		t.Errorf("expected the Arith's left operand to be a LetRef, got %T", arith.Left)
+	}
+	if _, ok := arith.Right.(LetRef); !ok {
+		t.Errorf("expected the Arith's right operand to be a LetRef, got %T", arith.Right)
+	}
+}

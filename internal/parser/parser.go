@@ -148,10 +148,33 @@ func (p *parser) ternary() (Expr, error) {
 	return Ternary{Cond: cond, True: trueExpr, False: falseExpr}, nil
 }
 
-// value implements GRAMMAR.md §2's `Value` for this v0's covered cases: a bare State, VOID, or
-// an Arith application (`Value ArithOp Value`, left-associative per GRAMMAR.md §3.3 — checked
-// here by looking one token ahead for an arith operator after the first operand).
+// value implements GRAMMAR.md §2's `Value` for this v0's covered cases: a real, left-associative
+// chain of `ArithOp` applications over `primary()` operands (GRAMMAR.md §3.3: "Arith and LinAlg
+// operators are all left-associative, single precedence tier"). Real, found-live fix over an
+// earlier draft: that version only ever accepted ONE operator with a bare `State` on both sides,
+// so neither a chain (`a XOR4 b XOR4 c`) nor combining two `Let`-bound values (`x XOR4 y`, both
+// `LetRef`s) could parse — both are real, ordinary uses of GRAMMAR.md's own `Value ArithOp Value`
+// production, not exotic cases.
 func (p *parser) value() (Expr, error) {
+	left, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+	for isArithOp(p.peek().Kind) {
+		op := p.next().Kind
+		right, err := p.primary()
+		if err != nil {
+			return nil, err
+		}
+		left = Arith{Op: op, Left: left, Right: right}
+	}
+	return left, nil
+}
+
+// primary is one ArithOp operand: a bare State, VOID, or a LetRef (bare MAGNET). GRAMMAR.md's
+// own `VectorLit`/`MagnetExpr`/`LinAlg`/`Labeled` productions are real, separate, not-yet-covered
+// operand shapes — a real, named follow-up, not silently assumed unreachable.
+func (p *parser) primary() (Expr, error) {
 	tok := p.peek()
 
 	if tok.Kind == lexer.KindVoid {
@@ -160,32 +183,18 @@ func (p *parser) value() (Expr, error) {
 	}
 
 	// GRAMMAR.md §2's `LetRef ::= MAGNET` (bare, no operands) -- distinct from `MagnetExpr`'s
-	// own `VectorLit MAGNET Value` row-extraction shape (not yet implemented by this parser;
-	// a bare MAGNET here always means "the nearest enclosing Let's bound value"). Real, found-
-	// live fix: a `LetRef` is a real `Value` in its own right, so (like `State` below) it must
-	// also be checked for a following arith operator -- an earlier draft returned immediately
-	// here, silently dropping `🧲 🔀 🌒`'s own trailing `🔀 🌒` instead of parsing it as an Arith.
-	var left Expr
+	// own `VectorLit MAGNET Value` row-extraction shape (not yet implemented by this parser; a
+	// bare MAGNET here always means "the nearest enclosing Let's bound value").
 	if tok.Kind == lexer.KindMagnet {
 		p.next()
-		left = LetRef{}
-	} else if tok.Kind == lexer.KindState {
-		p.next()
-		left = State{Value: tok.State}
-	} else {
-		return nil, p.errf("expected a base4 state, VOID, or MAGNET, got %s", tok.Kind)
+		return LetRef{}, nil
 	}
 
-	if op := p.peek().Kind; isArithOp(op) {
-		p.next()
-		rightTok := p.peek()
-		if rightTok.Kind != lexer.KindState {
-			return nil, p.errf("expected a base4 state as the right operand of %s", op)
-		}
-		p.next()
-		left = Arith{Op: op, Left: left, Right: State{Value: rightTok.State}}
+	if tok.Kind != lexer.KindState {
+		return nil, p.errf("expected a base4 state, VOID, or MAGNET, got %s", tok.Kind)
 	}
-	return left, nil
+	p.next()
+	return State{Value: tok.State}, nil
 }
 
 func isArithOp(k lexer.Kind) bool {
