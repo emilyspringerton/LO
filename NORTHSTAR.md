@@ -117,6 +117,24 @@ narrowest real slice first, matching every other real Phase 0/1 in this monorepo
 question from item 6 above (the `let`-lowering blowup risk) gets a real answer here, not assumed
 away.
 
+**Groundwork already started, ahead of Phase 1's own compiler (founder real-time, 2026-08-30:
+"continue working on lo adding to the stdlib libs necessary to make the language actually
+function... theoretically ffi into parena is acceptable if it satisfies the design")**:
+`PARENA/stdlib/base4/vector.prn` — the real PARENA-side primitives Phase 1's emitted `.prn` will
+call into for GRAMMAR.md §5.1's `Arith` ops and §5.3's `EQ`/`DOT` over vectors, rather than Phase
+1 hand-generating base4 bit logic inline every time. Elementwise xor/and/or/add/subtract,
+structural equality, dimlen, and dot are real and verified (`make test-base4-vector`, PARENA
+commit `f0048e8`); a real, confirmed compiler bug on `dot` (loop-accumulator double-boxing) is
+documented, not fixed, matching PARENA's own `linalg.prn` precedent for the same class of issue.
+Two real, separately-sized stdlib pieces are still needed before Phase 1 can cover GRAMMAR.md's
+full `Value` grammar and are named here rather than left implicit:
+- **S208-03 — `STACK`/`MATMUL`/matrix construction.** Needs its own shape convention decision
+  (flat array-with-strides, matching `array.prn`'s own `NDArray`, vs. a real `Vec`-of-`Vec`) before
+  any code — not started.
+- **S208-04 — the PCRE-lite pattern matcher** (GRAMMAR.md §5.4's wildcard/star/anchor/alternation/
+  non-nested-group token set) over base4 vectors. A real, separate backtracking-matcher-sized
+  piece of work, not an elementwise op — not started.
+
 **Phase 3+ (design only, not detailed here)**: vectors/matrices/patterns/unions, gated on
 `parena build`'s own already-real support for them (real, achievable per item 5) and, separately,
 on `burrow` growing `defenum`/`match`/`loop`/`Vec`/construction/`let` support before those same
