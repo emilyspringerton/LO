@@ -94,3 +94,52 @@ func TestVecLitAndUnknownChar(t *testing.T) {
 		t.Fatal("expected a lex error for plain ASCII text outside the exact vector keyword")
 	}
 }
+
+// LO_Formal_Grammar_Phase_0_Complete.md §20's own worked example: 🔤"cat".
+func TestLexLiteralQuotedText(t *testing.T) {
+	toks, err := Lex(`🔤"cat"`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(toks) != 1 {
+		t.Fatalf("got %d tokens, want 1: %+v", len(toks), toks)
+	}
+	if toks[0].Kind != KindLiteral {
+		t.Errorf("got %s, want LITERAL", toks[0].Kind)
+	}
+	if toks[0].Text != "cat" {
+		t.Errorf("got Text=%q, want %q", toks[0].Text, "cat")
+	}
+}
+
+// Real, resolved decision (see lexQuotedText's own doc comment): LITERAL's opening quote must
+// immediately follow with no intervening whitespace, unlike every other token pair.
+func TestLexLiteralRejectsSpaceBeforeQuote(t *testing.T) {
+	if _, err := Lex(`🔤 "cat"`); err == nil {
+		t.Fatal("expected a lex error for whitespace between LITERAL and its opening quote")
+	}
+}
+
+func TestLexLiteralRejectsUnterminatedQuote(t *testing.T) {
+	if _, err := Lex(`🔤"cat`); err == nil {
+		t.Fatal("expected a lex error for an unterminated quoted literal")
+	}
+}
+
+// LO_Formal_Grammar_Phase_0_Complete.md §2.5's remaining pattern tokens not already covered by
+// the pre-existing base4-pattern glyph set (WILDCARD/STAR/ONEPLUS/OPT/START/END/ALT/GROUP).
+func TestLexPatternTokens(t *testing.T) {
+	toks, err := Lex("🅰️ 🚫 ↔️ 🛡️")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []Kind{KindClass, KindNClass, KindRange, KindEscape}
+	if len(toks) != len(want) {
+		t.Fatalf("got %d tokens, want %d: %+v", len(toks), len(want), toks)
+	}
+	for i, k := range want {
+		if toks[i].Kind != k {
+			t.Errorf("token %d: got %s, want %s", i, toks[i].Kind, k)
+		}
+	}
+}

@@ -25,6 +25,21 @@ behavior (unlike the I32 Door case) — verified instead via a `#define main`-re
 calls the renamed function directly and reads its real printed value from stdout. Verified
 end-to-end for both `FLOAT`/`DOUBLE`.
 
+**2026-09-01 update**: the uploaded doc's own much larger PCRE literal/class/range/escape
+grammar (§19-29) is now real, tested, and IN PROGRESS, one slice at a time -- lexer-level first
+(`LITERAL`/`CLASS`/`NCLASS`/`RANGE`/`ESCAPE`, §1's `lexQuotedText`). **One real decision made
+where the source doc is silent, flagged rather than guessed at without comment**: the source
+never states LITERAL's own exact quoting rule (whether whitespace may separate `🔤` from its
+opening `"`, whether any backslash-escape happens inside the quotes, what an unterminated quote
+does) — every worked example glues them with zero space (`🔤"cat"`), so this repo resolves it as:
+the opening `"` must immediately follow `🔤` with NO intervening whitespace (a real, deliberate
+exception to §1's own general "whitespace is insignificant between tokens" rule), no
+backslash-escapes inside the quotes (the doc's own `ESCAPE` token is a separate PATTERN-level
+construct, not a string-lexing escape), and an unterminated quote is a fatal lex error. Parser/
+emitter support for the actual `Pattern`/`Literal`/`CharacterClass`/`Escaped` productions (and the
+`MATCH` value's own real String-typed subject, itself a new, not-yet-supported LO value kind) is
+a real, separate, larger follow-up — not attempted in this same pass.
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of

@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Variation selectors GRAMMAR.md §1.2 strips before token lookup.
@@ -61,6 +62,11 @@ var tokenTable = map[rune]Kind{
 	0x1F6D1: KindEnd,      // 🛑
 	0x1F6E4: KindAlt,      // 🛤
 	0x1F5DC: KindGroup,    // 🗜
+	0x1F524: KindLiteral,  // 🔤 -- LO_Formal_Grammar_Phase_0_Complete.md §2.5 (see lexQuotedText)
+	0x1F170: KindClass,    // 🅰 (+ VS16)
+	0x1F6AB: KindNClass,   // 🚫
+	0x2194:  KindRange,    // ↔ (+ VS16)
+	0x1F6E1: KindEscape,   // 🛡 (+ VS16)
 }
 
 const vecLit = "vec PARENA CONSTRUCT 312"
@@ -114,14 +120,59 @@ func Lex(src string) ([]Token, error) {
 
 		if state, ok := stateTable[base]; ok {
 			toks = append(toks, Token{Kind: KindState, State: state, Pos: i})
-		} else if kind, ok := tokenTable[base]; ok {
-			toks = append(toks, Token{Kind: kind, Pos: i})
-		} else {
+			i += consumed
+			continue
+		}
+
+		kind, ok := tokenTable[base]
+		if !ok {
 			return nil, &Error{Pos: i, Msg: fmt.Sprintf("unrecognized codepoint U+%04X", base)}
 		}
+
+		if kind == KindLiteral {
+			// LO_Formal_Grammar_Phase_0_Complete.md §20's `Literal ::= LITERAL QuotedText` --
+			// see lexQuotedText's own doc comment for the real quoting rule this repo resolves
+			// the source doc's own silence on.
+			text, litConsumed, err := lexQuotedText(runes, i+consumed)
+			if err != nil {
+				return nil, err
+			}
+			toks = append(toks, Token{Kind: KindLiteral, Text: text, Pos: i})
+			i += consumed + litConsumed
+			continue
+		}
+
+		toks = append(toks, Token{Kind: kind, Pos: i})
 		i += consumed
 	}
 	return toks, nil
+}
+
+// lexQuotedText implements LO_Formal_Grammar_Phase_0_Complete.md §20's `QuotedText`, a real,
+// resolved decision the source doc itself never states precisely: every worked example glues
+// LITERAL directly to its quote with zero space (`🔤"cat"`), so this requires the opening `"`
+// to immediately follow the LITERAL codepoint (no intervening whitespace, unlike every other
+// token pair in this grammar) -- a real, deliberate departure from §1's own general
+// "whitespace is insignificant between tokens" rule, made because nothing else in the source
+// material suggests LITERAL's own quote is a separate token in the first place. No backslash-
+// escape processing happens inside the quotes themselves (the doc's own ESCAPE token is a
+// PATTERN-level construct applying to a following Escapable non-terminal, not a string-lexing
+// escape) -- a bare `"` cannot appear inside quoted text in this v0. Returns the text and how
+// many runes were consumed starting at `start` (the opening quote itself).
+func lexQuotedText(runes []rune, start int) (string, int, error) {
+	if start >= len(runes) || runes[start] != '"' {
+		return "", 0, &Error{Pos: start, Msg: "expected an opening '\"' immediately after LITERAL (🔤), with no intervening whitespace"}
+	}
+	var sb strings.Builder
+	i := start + 1
+	for i < len(runes) {
+		if runes[i] == '"' {
+			return sb.String(), i + 1 - start, nil
+		}
+		sb.WriteRune(runes[i])
+		i++
+	}
+	return "", 0, &Error{Pos: start, Msg: "unterminated quoted literal text (missing closing '\"')"}
 }
 
 // lexEmojiToken reads one token's base codepoint starting at runes[i], applying GRAMMAR.md

@@ -58,13 +58,20 @@ const (
 	KindEnd          // 🛑
 	KindAlt          // 🛤️
 	KindGroup        // 🗜️ (both open and close -- see GRAMMAR.md §5.4)
+	KindLiteral      // 🔤 -- quoted text payload, LO_Formal_Grammar_Phase_0_Complete.md §20 (see
+	                 // Token.Text)
+	KindClass        // 🅰️ -- positive character class, same doc §25
+	KindNClass       // 🚫 -- negated character class, same doc §25
+	KindRange        // ↔️ -- character range (a-z), same doc §26
+	KindEscape       // 🛡️ -- literal-escape the following pattern atom, same doc §27
 )
 
 // Token is one lexed unit. Pos is the rune offset in the source where the token starts, for
 // real error reporting once a parser exists (Phase 1's own next real step).
 type Token struct {
 	Kind  Kind
-	State int // valid only when Kind == KindState: 0-3
+	State int    // valid only when Kind == KindState: 0-3
+	Text  string // valid only when Kind == KindLiteral: the quoted text between 🔤"..."
 	Pos   int
 }
 
@@ -158,6 +165,16 @@ func (k Kind) String() string {
 		return "ALT"
 	case KindGroup:
 		return "GROUP"
+	case KindLiteral:
+		return "LITERAL"
+	case KindClass:
+		return "CLASS"
+	case KindNClass:
+		return "NCLASS"
+	case KindRange:
+		return "RANGE"
+	case KindEscape:
+		return "ESCAPE"
 	default:
 		return "INVALID"
 	}
