@@ -54,6 +54,27 @@ depth check exists yet — a real, named follow-up). Still no emitter support an
 values in LO at all — this pass is parser-only, unit-tested against AST shape, not run end-to-end
 (there's nothing yet to run it through). 10 new parser tests.
 
+**Same day, continued again**: `internal/emitter/pattern.go` now lowers a parsed `Pattern` AST
+into real PCRE syntax TEXT — the same string PARENA's own real `regex/pcre.prn` (`compile`/
+`is-match`) actually consumes. Checked against the EXACT PCRE text every one of the doc's own
+§20-29 worked examples shows (`^cat$`, `c.t`, `a*`/`a+`/`a?`, `cat|dog|fox`, `[abc]`/`[^abc]`,
+`[a-zA-Z0-9]+`, `(ab)+`, escaped `\*`/`\.`), plus this repo's own real check that a `LITERAL`
+containing PCRE metacharacters comes out backslash-escaped (`§20`'s own "provides Unicode literal
+content" means literally, not as PCRE syntax — none of the doc's own examples exercise this).
+**One real, honest, named gap, not silently guessed at**: `ESCAPE GROUP` has no unambiguous
+literal-character mapping in this v0 — `PatternEscaped` only records that a GROUP token was
+escaped, never whether the source meant `(` or `)` (the parser itself can't know either, since
+GROUP is the same token for both), so this is a real error, not a coin-flip guess. **Real, honest,
+still-not-attempted next step, named explicitly rather than assumed done**: wiring this PCRE text
+into an actual emitted call to `regex/pcre/compile`+`is-match` needs a caller-supplied
+`Arena @ Region` — which breaks LO's existing "name the defn `main`" verification trick (that
+trick needs a ZERO-parameter function; PARENA's own `Arena`-taking self-test convention, confirmed
+against `PARENA/tests/test_base4_pattern.c`, always threads the Arena in from an external C
+driver, never conjures one inside a zero-arg `main`) — and giving `MATCH` a real String-typed
+subject (LO has no string VALUES in the language at all yet). Both remain real, separate,
+larger follow-ups. 24 new emitter tests (unit-level, string-output only — no compile/run yet,
+since there's no real `.prn` emission for this node yet either).
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of
