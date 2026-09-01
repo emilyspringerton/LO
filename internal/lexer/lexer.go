@@ -44,6 +44,8 @@ var tokenTable = map[rune]Kind{
 	0x1F9CA: KindMatrix,   // 🧊
 	0x1F578: KindPattern,  // 🕸
 	0x1F522: KindI32,      // 🔢
+	0x26AB:  KindFloatType,  // ⚫
+	0x26AA:  KindDoubleType, // ⚪
 	0x1F4DC: KindString,   // 📜
 	0x2699:  KindFunc,     // ⚙
 	0x1F573: KindVoid,     // 🕳

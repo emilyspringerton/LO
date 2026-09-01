@@ -19,6 +19,10 @@ const (
 	TypeMatrix
 	TypePattern
 	TypeI32
+	TypeFloat  // ⚫, LO_Formal_Grammar_Phase_0_Complete.md §7.2 -- see the emitter's own doc
+	// comment on why this and TypeDouble both map to the same real PARENA F64 (checked directly
+	// against src/emit.c: PARENA has no separate single-precision float type at all).
+	TypeDouble // ⚪, same doc §7.3
 	TypeString
 	TypeFunc
 	TypeVoid

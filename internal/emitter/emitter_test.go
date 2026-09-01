@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,7 +44,11 @@ func TestEmitGrammarConsistentXorExample(t *testing.T) {
 // ~40 lines of real subprocess plumbing per test. Skips (not fails) the calling test if the
 // parena binary/stdlib aren't reachable in this environment -- a real, honest environment-
 // dependent check, not a silently-passing one.
-func compileRunAndGetExitCode(t *testing.T, src string) int {
+// compileToGeneratedC runs the real lex -> parse -> emit -> parena build pipeline and returns
+// the path to the generated .c file plus the temp dir it lives in. Shared by both the I32
+// (exit-code-based) and F64 (real-value-based) live verification helpers below. Skips (not
+// fails) the calling test if the parena binary/stdlib aren't reachable in this environment.
+func compileToGeneratedC(t *testing.T, src string) (dir, outC string) {
 	t.Helper()
 	toks, err := lexer.Lex(src)
 	if err != nil {
@@ -67,16 +72,25 @@ func compileRunAndGetExitCode(t *testing.T, src string) int {
 		t.Skipf("PARENA/parena binary not found (run `make build` in PARENA first): %v", err)
 	}
 
-	dir := t.TempDir()
+	dir = t.TempDir()
 	prnPath := filepath.Join(dir, "main.prn")
 	if err := os.WriteFile(prnPath, []byte(prnSource), 0o644); err != nil {
 		t.Fatalf("could not write generated .prn: %v", err)
 	}
-	outC := filepath.Join(dir, "main.c")
+	outC = filepath.Join(dir, "main.c")
 	cmd := exec.Command(parenaBin, "build", algebraPath, prnPath, "-o", outC)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("parena build failed: %v\n%s", err, out)
 	}
+	return dir, outC
+}
+
+// compileRunAndGetExitCode verifies an I32-Door (or no-Door) LO program by running the compiled
+// binary and reading its real process exit code -- valid because `main` returning `int` is a
+// real, standard C entry point (see emitter.go's own doc comment on the "main" coincidence).
+func compileRunAndGetExitCode(t *testing.T, src string) int {
+	t.Helper()
+	dir, outC := compileToGeneratedC(t, src)
 
 	outBin := filepath.Join(dir, "main")
 	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
@@ -89,6 +103,53 @@ func compileRunAndGetExitCode(t *testing.T, src string) int {
 	run := exec.Command(outBin)
 	_ = run.Run()
 	return run.ProcessState.ExitCode()
+}
+
+// compileRunAndGetFloat verifies a FLOAT/DOUBLE-Door LO program (`main` returning a real `F64`)
+// by its actual RETURNED VALUE, not process exit code -- a real, necessary difference from the
+// I32 case: `double main(void)` compiles (with a real `-Wmain` warning, confirmed live) but its
+// process exit code is genuine undefined behavior (the OS exit-status convention is an int, not
+// a double's own calling-convention return slot), so exit-code-based verification would be
+// meaningless here. Instead, `#define main <other-name>` before including the generated .c (a
+// real, standard C preprocessor technique) renames the colliding symbol so a real driver's own
+// `int main(void)` can call it directly and print the actual double value to stdout.
+func compileRunAndGetFloat(t *testing.T, src string) float64 {
+	t.Helper()
+	_, outC := compileToGeneratedC(t, src)
+
+	dir := filepath.Dir(outC)
+	driverC := filepath.Join(dir, "driver.c")
+	driver := fmt.Sprintf(`#include "parena_runtime.h"
+#include <stdio.h>
+#define main lo_generated_main
+#include %q
+#undef main
+int main(void) {
+    printf("%%f\n", lo_generated_main());
+    return 0;
+}
+`, outC)
+	if err := os.WriteFile(driverC, []byte(driver), 0o644); err != nil {
+		t.Fatalf("could not write the real #define-main driver: %v", err)
+	}
+
+	outBin := filepath.Join(dir, "driverbin")
+	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
+	runtimeDir := "../../../PARENA/runtime"
+	cc := exec.Command("cc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Werror", driverC, runtimeC, "-I", runtimeDir, "-o", outBin, "-lm")
+	if out, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s", err, out)
+	}
+
+	out, err := exec.Command(outBin).Output()
+	if err != nil {
+		t.Fatalf("running the compiled driver failed: %v", err)
+	}
+	var result float64
+	if _, err := fmt.Sscanf(string(out), "%f", &result); err != nil {
+		t.Fatalf("could not parse the driver's own printed float %q: %v", out, err)
+	}
+	return result
 }
 
 // TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
@@ -145,6 +206,28 @@ func TestEmitLambdaCallRunsCorrectly(t *testing.T) {
 	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 📞 💠 🧲 🔀 🌒 🌓;")
 	if exitCode != 3 {
 		t.Errorf("expected exit code 3 (CALL (LAMBDA x -> x XOR4 S1) S2 = 2^1), got %d", exitCode)
+	}
+}
+
+// TestEmitFloatDoorRunsCorrectly -- real, live verification of the new FLOAT/DOUBLE Door support
+// (LO_Formal_Grammar_Phase_0_Complete.md §7.2/7.3): `DOOR FLOAT S1` must produce a real PARENA
+// F64 value of exactly 1.0, verified by the compiled program's own ACTUAL RETURNED VALUE (see
+// compileRunAndGetFloat's own doc comment on why exit-code checking, used for I32, doesn't work
+// here at all).
+func TestEmitFloatDoorRunsCorrectly(t *testing.T) {
+	got := compileRunAndGetFloat(t, "🚪 ⚫ 🌒;")
+	if got != 1.0 {
+		t.Errorf("expected 1.0 (DOOR FLOAT S1), got %v", got)
+	}
+}
+
+// TestEmitDoubleDoorRunsCorrectly -- same real verification for DOUBLE, using an Arith body
+// (S1 XOR4 S2 = 3) to also confirm the I32 arithmetic still runs correctly before the real F64
+// cast is applied.
+func TestEmitDoubleDoorRunsCorrectly(t *testing.T) {
+	got := compileRunAndGetFloat(t, "🚪 ⚪ 🌒 🔀 🌓;")
+	if got != 3.0 {
+		t.Errorf("expected 3.0 (DOOR DOUBLE S1 XOR4 S2), got %v", got)
 	}
 }
 

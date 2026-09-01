@@ -72,6 +72,12 @@ func (p *parser) typeAtom() (TypeAtom, bool) {
 	case lexer.KindI32:
 		p.next()
 		return TypeI32, true
+	case lexer.KindFloatType:
+		p.next()
+		return TypeFloat, true
+	case lexer.KindDoubleType:
+		p.next()
+		return TypeDouble, true
 	case lexer.KindString:
 		p.next()
 		return TypeString, true

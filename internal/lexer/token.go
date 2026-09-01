@@ -41,6 +41,8 @@ const (
 	KindMatrix       // 🧊
 	KindPattern      // 🕸️
 	KindI32          // 🔢
+	KindFloatType    // ⚫ -- LO_Formal_Grammar_Phase_0_Complete.md §7.2
+	KindDoubleType   // ⚪ -- same doc §7.3
 	KindString       // 📜
 	KindFunc         // ⚙️
 	KindVoid         // 🕳️
@@ -120,6 +122,10 @@ func (k Kind) String() string {
 		return "MATRIX"
 	case KindPattern:
 		return "PATTERN"
+	case KindFloatType:
+		return "FLOAT"
+	case KindDoubleType:
+		return "DOUBLE"
 	case KindI32:
 		return "I32"
 	case KindString:

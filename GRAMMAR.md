@@ -17,6 +17,13 @@ its own EBNF in two places: `Lambda`'s parameter is unnamed (reuses `Let`/`LetRe
 depth-index scheme, since real quoted-string-literal lexing for the doc's own `Param ::= LITERAL`
 doesn't exist yet), and `Call`/`Lambda` are single-argument/single-parameter only (the doc's own
 `ArgList`/`LambdaParams` generality is a real, separate follow-up). Verified end-to-end for both.
+`FLOAT`/`DOUBLE` (⚫/⚪) are now real and implemented as Door types: since PARENA itself has no
+separate F32 (checked directly against `src/emit.c`), both map to the same real PARENA F64 via a
+small in-module `lo-i32-to-f64` cast helper. Real, found-live compiler wrinkle: a `(defn main []
+: F64 ...)` mangles to literal C `double main(void)`, whose PROCESS EXIT CODE is undefined
+behavior (unlike the I32 Door case) — verified instead via a `#define main`-rename driver that
+calls the renamed function directly and reads its real printed value from stdout. Verified
+end-to-end for both `FLOAT`/`DOUBLE`.
 
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
@@ -149,10 +156,34 @@ Door         ::= DOOR TypeSig
 TypeSig      ::= UNION TypeAtom TypeAtom+      (* 2+ members, e.g. DOOR UNION STRING I32 *)
                | TypeAtom
 
-TypeAtom     ::= SCALAR | VECTOR | MATRIX | PATTERN | I32 | STRING | FUNC | VOID
+TypeAtom     ::= SCALAR | VECTOR | MATRIX | PATTERN | I32 | FLOAT | DOUBLE | STRING | FUNC | VOID
+
+(* FLOAT/DOUBLE -- LO_Formal_Grammar_Phase_0_Complete.md §7.2/7.3, added 2026-08-31/09-01. Real,
+   checked-not-assumed finding: PARENA itself has no separate single-precision float type at all
+   (grepped src/emit.c directly -- no "F32" anywhere), so both LO types compile to the same real
+   PARENA F64. Every LO expression in this v0 is still base4-state I32 arithmetic underneath, so a
+   FLOAT/DOUBLE Door casts the program's I32 result to F64 via a small `lo-i32-to-f64` helper
+   emitted into the same module (see `internal/emitter`'s own doc comment), rather than this being
+   a real distinct numeric expression type. Real, found, worth naming: PARENA mangles
+   `(defn main [] : F64 ...)` to literal C `double main(void)`, which compiles but whose PROCESS
+   EXIT CODE is undefined behavior (a real calling-convention mismatch, not merely "some garbage
+   int") -- unlike the I32 Door case, exit-code-based verification is invalid here. Verified via a
+   `#define main lo_generated_main` / `#include` / `#undef main` driver that calls the renamed
+   function directly and reads its real `printf`-ed value from stdout instead. *)
 
 Expr         ::= Ternary
                | Let
+               | Switch
+
+(* Switch -- LO_Formal_Grammar_Phase_0_Complete.md §17, added 2026-08-31 (founder real-time: "add
+   switch and case"). Real, narrow v0 differences from the source doc, named rather than silently
+   assumed: each Case's own match value is a bare State (0-3), not the doc's own full Value
+   generality -- every worked example in the source doc itself uses a bare state; and Default is
+   REQUIRED here rather than optional (this compiler's scalar-I32-only emitter has no real way to
+   produce a VOID fallback result). Lowers to a nested `if`/`=` chain, same shape Ternary emits. *)
+Switch       ::= SWITCH Value Case+ Default
+Case         ::= CASE State Expr
+Default      ::= DEFAULT Expr
 
 (* Let -- real variable binding, added 2026-08-30 (founder real-time: "use ✨ for LET"). Real,
    deliberate architectural simplification over the source spec's own De Bruijn/environment-
@@ -182,8 +213,20 @@ Value        ::= Labeled
                | MagnetExpr
                | LetRef                          (* a reference to an enclosing Let's bound
                                                      value, added 2026-08-30, extended same day *)
+               | Lambda
+               | Call
                | Ternary                        (* a ternary nests as a value: parenthesization
                                                     is purely by token adjacency, see §3 *)
+
+(* Lambda/Call -- LO_Formal_Grammar_Phase_0_Complete.md §15/§16, added 2026-08-31 (founder
+   real-time: "and LAMBDA"). Real, narrow v0: Lambda's parameter is unnamed, reusing Let/LetRef's
+   own depth-index binding scheme (real quoted-string-literal lexing for the doc's own
+   `Param ::= LITERAL` doesn't exist in this compiler yet), and Call/Lambda are single-argument/
+   single-parameter only (the doc's own ArgList/LambdaParams generality is a real, separate
+   follow-up). Call's own Fn must structurally be a Lambda literal -- a real, honest emit-time
+   error otherwise, not guessed at. Lowers to a real PARENA IIFE: `((fn [(x : I32)] body) arg)`. *)
+Lambda       ::= LAMBDA Expr
+Call         ::= CALL Value Value
 
 (* LetRef -- extended 2026-08-30 (same day it was added) to reach OUTER Let bindings, not just
    the nearest: a bare MAGNET is Depth 0 (the nearest enclosing Let, unchanged/backward
