@@ -122,6 +122,22 @@ whole-program from whatever files are actually passed to `build`, so a bare `(im
 generated `.prn` text is not sufficient on its own; this costs nothing for programs that don't use
 `MATCH`. 3 new real end-to-end emitter tests. 68 tests total (subtests included).
 
+**Same day, MATCH's own Subject can now be a Let-bound String**: `emitExpr` gained minimal
+per-binding type tracking (`exprType`, a `types []exprType` slice indexed the same way `x0`/
+`x1`/... are — every non-Let position stays implicitly `typeI32`, matching what the emitter
+already assumed everywhere before this). A `Let` records its own Bound's inferred type
+(`exprTypeOf`: a `StringLit` is `typeString`, a `LetRef` resolves through `types`, everything else
+stays `typeI32`) for its Body's own depth. `MATCH`'s own Subject (`emitStringSubject`) now accepts
+either a bare `StringLit` (unchanged) or a `LetRef`/`MAGNET` that resolves to a `typeString`
+binding — closing the "Subject must be a bare LITERAL" restriction S222-09 left as a named
+follow-up. A `LetRef` resolving to a `typeI32` binding stays a real, honest emit-time error, not
+silently coerced. **Verified end-to-end**: `LET "cat" (MAGNET MATCH ^cat$) ? S1 : S0` really
+compiles and runs, matching. Real, honest, still-unattempted follow-up: `Lambda`'s own parameter
+stays `typeI32` always (its real type isn't knowable until `Call` time, and PARENA's own `fn`
+needs a concrete param type regardless) — a String-typed `Lambda` parameter remains a separate,
+larger piece of work. 2 new real emitter tests (a live match, and an honest I32-LetRef-as-Subject
+error). 70 tests total (subtests included).
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of

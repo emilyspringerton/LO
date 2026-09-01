@@ -25,6 +25,18 @@ type Error struct{ Msg string }
 
 func (e *Error) Error() string { return "emit error: " + e.Msg }
 
+// exprType is the real PARENA type a given Let binding (x0, x1, ...) was bound to -- LO itself
+// has no general type-checker, so this is a minimal, narrow inference used for exactly one real
+// purpose: letting MATCH's own Subject be a LetRef/MAGNET pointing at a Let-bound string, not
+// only a bare StringLit. Every other expression shape in this v0 is I32 (or, at the Door level,
+// cast to F64/String separately), so typeI32 stays the default everywhere this isn't tracked.
+type exprType int
+
+const (
+	typeI32 exprType = iota
+	typeString
+)
+
 // Emit produces real `.prn` source for prog. Real, current scope: prog.DoorType must be
 // TypeI32/TypeFloat/TypeDouble or unset (TypeInvalid) — anything else is a named, honest error,
 // not guessed at.
@@ -60,7 +72,7 @@ func Emit(prog *parser.Program) (string, error) {
 	// real parameter, it can no longer be named "main" (see the fnName/params branch below).
 	needsArena := exprNeedsArena(prog.Body)
 
-	body, err := emitExpr(prog.Body, 0)
+	body, err := emitExpr(prog.Body, 0, nil)
 	if err != nil {
 		return "", err
 	}
@@ -151,8 +163,11 @@ func exprNeedsArena(e parser.Expr) bool {
 // variable name per nesting level (`x0`, `x1`, ...) and `LetRef` can resolve its own `Depth`
 // (0 = innermost) to the right one, extended 2026-08-30 to reach outer bindings, not just the
 // nearest -- see `parser.LetRef`'s own doc comment for the real reason this changed from a
-// single always-shadowing `x`.
-func emitExpr(e parser.Expr, depth int) (string, error) {
+// single always-shadowing `x`. `types` holds each active binding's own exprType, indexed the
+// same way `x0`/`x1`/... are (types[i] is x{i}'s type) -- added 2026-09-01 so a LetRef/MAGNET can
+// be used as MATCH's own Subject when it resolves to a Let-bound String, not only a bare
+// StringLit; every position that isn't a Let binding stays implicitly typeI32.
+func emitExpr(e parser.Expr, depth int, types []exprType) (string, error) {
 	switch v := e.(type) {
 	case parser.State:
 		return fmt.Sprintf("%d", v.Value), nil
@@ -174,12 +189,15 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		// Real, direct lowering to PARENA's own `let` (see NORTHSTAR.md/GRAMMAR.md's own
 		// "Let" doc comment for why this sidesteps the source spec's own De Bruijn/environment-
 		// matrix blowup risk entirely). Bound is emitted at the CURRENT depth (it must not see
-		// its own binding); Body is emitted one level deeper.
-		bound, err := emitExpr(v.Bound, depth)
+		// its own binding); Body is emitted one level deeper, with this binding's own inferred
+		// exprType (exprTypeOf) recorded so a later LetRef/MAGNET back to it can be typed.
+		bound, err := emitExpr(v.Bound, depth, types)
 		if err != nil {
 			return "", err
 		}
-		body, err := emitExpr(v.Body, depth+1)
+		boundType := exprTypeOf(v.Bound, types)
+		childTypes := append(append([]exprType{}, types...), boundType)
+		body, err := emitExpr(v.Body, depth+1, childTypes)
 		if err != nil {
 			return "", err
 		}
@@ -202,22 +220,22 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		return "0", nil
 
 	case parser.Eq:
-		left, err := emitExpr(v.Left, depth)
+		left, err := emitExpr(v.Left, depth, types)
 		if err != nil {
 			return "", err
 		}
-		right, err := emitExpr(v.Right, depth)
+		right, err := emitExpr(v.Right, depth, types)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("(= %s %s)", left, right), nil
 
 	case parser.Arith:
-		left, err := emitExpr(v.Left, depth)
+		left, err := emitExpr(v.Left, depth, types)
 		if err != nil {
 			return "", err
 		}
-		right, err := emitExpr(v.Right, depth)
+		right, err := emitExpr(v.Right, depth, types)
 		if err != nil {
 			return "", err
 		}
@@ -228,20 +246,20 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		return fmt.Sprintf("(base4/algebra/%s %s %s)", fn, left, right), nil
 
 	case parser.Ternary:
-		trueExpr, err := emitExpr(v.True, depth)
+		trueExpr, err := emitExpr(v.True, depth, types)
 		if err != nil {
 			return "", err
 		}
-		falseExpr, err := emitExpr(v.False, depth)
+		falseExpr, err := emitExpr(v.False, depth, types)
 		if err != nil {
 			return "", err
 		}
 
 		if m, ok := v.Cond.(parser.Match); ok {
-			return emitMatchIf(m, trueExpr, falseExpr)
+			return emitMatchIf(m, trueExpr, falseExpr, depth, types)
 		}
 
-		cond, err := emitExpr(v.Cond, depth)
+		cond, err := emitExpr(v.Cond, depth, types)
 		if err != nil {
 			return "", err
 		}
@@ -251,17 +269,17 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		// Real, direct lowering to a nested PARENA if/= chain -- the same shape Ternary already
 		// emits, just chained once per Case, ending in the (required, see the parser's own
 		// switch_ doc comment) Default.
-		selector, err := emitExpr(v.Selector, depth)
+		selector, err := emitExpr(v.Selector, depth, types)
 		if err != nil {
 			return "", err
 		}
-		tail, err := emitExpr(v.Default, depth)
+		tail, err := emitExpr(v.Default, depth, types)
 		if err != nil {
 			return "", err
 		}
 		for i := len(v.Cases) - 1; i >= 0; i-- {
 			c := v.Cases[i]
-			body, err := emitExpr(c.Body, depth)
+			body, err := emitExpr(c.Body, depth, types)
 			if err != nil {
 				return "", err
 			}
@@ -273,7 +291,12 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		// Real, direct lowering to a real PARENA anonymous function value (`fn`), reusing the
 		// same depth-index binding scheme Let/LetRef already use -- see the Lambda AST node's
 		// own doc comment for why this diverges from the source doc's own named-parameter form.
-		body, err := emitExpr(v.Body, depth+1)
+		// The parameter itself is always typeI32 here (its own default zero value) -- a Lambda
+		// parameter's real type isn't known until Call time, and PARENA's own `fn` needs a
+		// concrete param type at emit time regardless, so a String-typed Lambda parameter is a
+		// real, separate follow-up, not attempted here.
+		childTypes := append(append([]exprType{}, types...), typeI32)
+		body, err := emitExpr(v.Body, depth+1, childTypes)
 		if err != nil {
 			return "", err
 		}
@@ -287,11 +310,11 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		if !ok {
 			return "", &Error{Msg: fmt.Sprintf("Call's own Fn must be a Lambda literal in this v0, got %T", v.Fn)}
 		}
-		fnStr, err := emitExpr(lambda, depth)
+		fnStr, err := emitExpr(lambda, depth, types)
 		if err != nil {
 			return "", err
 		}
-		argStr, err := emitExpr(v.Arg, depth)
+		argStr, err := emitExpr(v.Arg, depth, types)
 		if err != nil {
 			return "", err
 		}
@@ -299,6 +322,26 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 
 	default:
 		return "", &Error{Msg: fmt.Sprintf("unsupported expression node %T", e)}
+	}
+}
+
+// exprTypeOf infers e's own exprType for the real, narrow purpose named on exprType's own doc
+// comment -- not a general type checker. A StringLit is typeString; a LetRef resolves through
+// `types` (using the exact same depth math as LetRef's own emitExpr case); everything else in
+// this v0 (State/Arith/Eq/Ternary/Switch/Lambda/Call/Match/VoidExpr) is typeI32, matching what
+// emitExpr already assumes for all of them today.
+func exprTypeOf(e parser.Expr, types []exprType) exprType {
+	switch v := e.(type) {
+	case parser.StringLit:
+		return typeString
+	case parser.LetRef:
+		idx := len(types) - 1 - v.Depth
+		if idx < 0 || idx >= len(types) {
+			return typeI32
+		}
+		return types[idx]
+	default:
+		return typeI32
 	}
 }
 
@@ -331,15 +374,11 @@ func emitStringLiteral(text string) string {
 // binding form itself. Verified live: this exact shape compiles and runs correctly (`/tmp/
 // test_matchif2.prn`-style repro, real `parena build` + `cc` + execution, exit code 1 for a real
 // match).
-func emitMatchIf(m parser.Match, trueExpr, falseExpr string) (string, error) {
-	// Real, honest v0 restriction: Subject must be a real StringLit -- LO has no other way to
-	// produce a String value yet (a Let/LetRef-bound String would need real type tracking through
-	// emitExpr, which doesn't exist -- a real, separate follow-up).
-	subjectLit, ok := m.Subject.(parser.StringLit)
-	if !ok {
-		return "", &Error{Msg: fmt.Sprintf("MATCH's own Subject must be a real String value (a bare LITERAL) in this v0, got %T", m.Subject)}
+func emitMatchIf(m parser.Match, trueExpr, falseExpr string, depth int, types []exprType) (string, error) {
+	subjectStr, err := emitStringSubject(m.Subject, depth, types)
+	if err != nil {
+		return "", err
 	}
-	subjectStr := emitStringLiteral(subjectLit.Text)
 
 	// patternToPCRE (pattern.go) produces the real PCRE syntax text; it can itself contain
 	// literal backslashes (an Escaped atom like `\*`), so it goes through the exact same
@@ -366,6 +405,31 @@ func emitMatchIf(m parser.Match, trueExpr, falseExpr string) (string, error) {
 		"(let [budget {:max-steps 100000}] (let [result %s] (if result %s %s)))",
 		matchExpr, trueExpr, falseExpr,
 	), nil
+}
+
+// emitStringSubject resolves MATCH's own Subject to a real PARENA String expression: either a
+// bare StringLit, or a LetRef/MAGNET that resolves (via `types`, exprType's own doc comment) to
+// a Let binding whose own Bound was itself a StringLit -- added 2026-09-01 alongside the
+// exprType tracking, closing the "Subject must be a bare LITERAL" restriction the Arena-
+// threading work (S222-09) left as a real, named follow-up. Anything else (a State/Arith/
+// Ternary/etc. subject, or a LetRef resolving to a typeI32 binding) is a real, honest error --
+// LO still has no general type checker, so this only recognizes the one shape it can prove.
+func emitStringSubject(e parser.Expr, depth int, types []exprType) (string, error) {
+	switch v := e.(type) {
+	case parser.StringLit:
+		return emitStringLiteral(v.Text), nil
+	case parser.LetRef:
+		if v.Depth >= depth {
+			return "", &Error{Msg: fmt.Sprintf("LetRef depth %d has no enclosing Let (only %d active here)", v.Depth, depth)}
+		}
+		idx := depth - 1 - v.Depth
+		if idx >= len(types) || types[idx] != typeString {
+			return "", &Error{Msg: "MATCH's own Subject must be a real String value (a StringLit, or a LetRef bound to one) in this v0"}
+		}
+		return fmt.Sprintf("x%d", idx), nil
+	default:
+		return "", &Error{Msg: fmt.Sprintf("MATCH's own Subject must be a real String value (a StringLit, or a LetRef bound to one) in this v0, got %T", e)}
+	}
 }
 
 func arithFn(op lexer.Kind) (string, error) {

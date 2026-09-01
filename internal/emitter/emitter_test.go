@@ -382,6 +382,33 @@ func TestEmitMatchCharacterClassRunsCorrectly(t *testing.T) {
 	}
 }
 
+// TestEmitMatchLetBoundSubjectRunsCorrectly -- real, live verification of the exprType tracking
+// added 2026-09-01 alongside the Arena-threading work: MATCH's own Subject can now be a
+// LetRef/MAGNET pointing at a Let-bound String, not only a bare StringLit.
+func TestEmitMatchLetBoundSubjectRunsCorrectly(t *testing.T) {
+	// DOOR I32; LET "cat" (MAGNET MATCH ^cat$) ? S1 : S0 -- expect a real match, exit code 1.
+	got := compileRunAndGetArenaExitCode(t, `🚪 🔢 ✨ 🔤"cat" 🧲 🔍 🏁 🔤"cat" 🛑 ❓ 🌒 : 🌑;`)
+	if got != 1 {
+		t.Errorf("expected 1 (the let-bound \"cat\" matches ^cat$), got %d", got)
+	}
+}
+
+// TestEmitMatchNonStringLetRefSubjectIsAnHonestError -- a LetRef resolving to an I32 binding is
+// a real, named error, not silently coerced or miscompiled.
+func TestEmitMatchNonStringLetRefSubjectIsAnHonestError(t *testing.T) {
+	toks, err := lexer.Lex(`✨ 🌒 🧲 🔍 🏁 🔤"cat" 🛑 ❓ 🌒 : 🌑;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := parser.Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if _, err := Emit(prog); err == nil {
+		t.Fatal("expected an emit error for an I32-typed LetRef used as MATCH's own Subject")
+	}
+}
+
 // TestEmitStringDoorEscapesBackslash -- real, live verification of emitExpr's own backslash-
 // doubling for StringLit (see its doc comment): a literal backslash in LO source must survive
 // as a literal backslash at runtime, not silently start a PARENA-level escape sequence.
