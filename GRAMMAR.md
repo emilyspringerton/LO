@@ -1,5 +1,23 @@
 # LO — Formal Grammar (Phase 0)
 
+**2026-08-31 update**: the founder uploaded `LO_Formal_Grammar_Phase_0_Complete.md` — a real,
+authoritative, later, more complete Phase 0 consolidation (adds `SWITCH`/`CASE`/`DEFAULT`,
+`LAMBDA`/`CALL`, `FLOAT`/`DOUBLE`, and a much larger PCRE literal/class/range/escape grammar this
+document never covered). **That document is now the canonical Phase 0 SPEC** for anything it
+covers; this document's own real, ongoing value from here is tracking what's ACTUALLY
+IMPLEMENTED plus the real compiler bugs/findings discovered building it (the uploaded doc is a
+spec, not an implementation log). **One real, found conflict, not silently resolved either way**:
+the uploaded doc's own §33 explicitly lists "explicit access to shadowed outer `LET` bindings" as
+OUT OF SCOPE for v1 — but this repo's own `S221-01` (this same week) already built and shipped
+exactly that (`LetRef`'s `Depth` field, §2 below). Kept as a real, working, tested superset rather
+than reverted, flagged here for the founder's own awareness rather than assumed to be fine.
+`SWITCH`/`CASE`/`LAMBDA`/`CALL` are now real and implemented (`internal/parser`/`internal/
+emitter`), using the uploaded doc's own exact glyphs (🔘/🔹/🔸/💠/📞) but a real, narrower v0 than
+its own EBNF in two places: `Lambda`'s parameter is unnamed (reuses `Let`/`LetRef`'s own
+depth-index scheme, since real quoted-string-literal lexing for the doc's own `Param ::= LITERAL`
+doesn't exist yet), and `Call`/`Lambda` are single-argument/single-parameter only (the doc's own
+`ArgList`/`LambdaParams` generality is a real, separate follow-up). Verified end-to-end for both.
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of

@@ -92,6 +92,58 @@ type LetRef struct {
 
 func (LetRef) isExpr() {}
 
+// Switch is LO_Formal_Grammar_Phase_0_Complete.md §17's `Switch ::= SWITCH Value Case+ Default?`
+// (2026-08-31, founder real-time: "add switch and case"). Real, narrow v0: `Selector` is a
+// `primary()` (State/VOID/LetRef), each `Case`'s own match value is a bare `State` (the doc's own
+// full `Value` generality for a case label is a real, separate follow-up — every worked example
+// in the source doc itself uses a bare state), and `Default` is required in this v0 rather than
+// optional (the doc's own §17 "if no case matches and there is no default, the result is VOID" is
+// a real, separate fallback-typing question this v0 sidesteps by just requiring one). Lowers to a
+// real nested PARENA `if`/`=` chain — the same shape `Ternary` already emits, just chained.
+type Switch struct {
+	Selector Expr
+	Cases    []SwitchCase
+	Default  Expr
+}
+
+func (Switch) isExpr() {}
+
+// SwitchCase is one `Case ::= CASE Value Expr` arm (its own match `Value` narrowed to a bare
+// `State` in this v0 — see Switch's own doc comment).
+type SwitchCase struct {
+	Match int // 0-3, the base4 state this case matches
+	Body  Expr
+}
+
+// Lambda is LO_Formal_Grammar_Phase_0_Complete.md §15's `Lambda ::= LAMBDA LambdaParams Expr`
+// (2026-08-31, founder real-time: "🐪 LAMBDA", later formalized as 💠 in the uploaded grammar
+// doc — see this package's own doc comment on that discrepancy). Real, deliberate simplification
+// over the source doc's own `LambdaParams ::= Param+` with `Param ::= LITERAL` (a quoted string
+// name): real string-literal lexing (quoted text) doesn't exist in this compiler yet — a real,
+// separate, genuinely bigger lexer feature, not attempted here. This v0 instead reuses the
+// already-real `Let`/`LetRef` depth-index binding mechanism: a `Lambda` introduces exactly ONE
+// parameter at the next nesting depth (same as `Let`), referenced inside `Body` via `LetRef`
+// exactly like a `Let`-bound value — the only real difference from `Let` is that a `Lambda`'s
+// "bound value" isn't supplied until `Call` applies it, so `Lambda` carries no `Bound` field.
+// Real, honest scope: exactly one parameter (the source doc's own multi-param `LambdaParams` is
+// a real, separate follow-up).
+type Lambda struct {
+	Body Expr
+}
+
+func (Lambda) isExpr() {}
+
+// Call is LO_Formal_Grammar_Phase_0_Complete.md §16's `Call ::= CALL Value ArgList` (real,
+// narrowed to exactly one argument in this v0, matching `Lambda`'s own single-parameter scope —
+// the source doc's own multi-argument `ArgList` is a real, separate follow-up).
+type Call struct {
+	Fn  Expr // must be a Lambda in this v0 -- a real, separate follow-up once LO can hold a
+	// function value in a Let/pass one through a chain of calls
+	Arg Expr
+}
+
+func (Call) isExpr() {}
+
 // Program is GRAMMAR.md §2's top-level `TypedExpr` — an optional Door plus a body Expr.
 type Program struct {
 	DoorType TypeAtom // TypeInvalid if no Door was present

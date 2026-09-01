@@ -30,6 +30,11 @@ const (
 	KindDimlen       // ⚖️
 	KindEq           // ⚓ (founder-confirmed 2026-08-30, GRAMMAR.md §1.3)
 	KindLet          // ✨ -- real variable binding, GRAMMAR.md §2's Let production
+	KindLambda       // 💠 -- anonymous function, LO_Formal_Grammar_Phase_0_Complete.md §15
+	KindCall         // 📞 -- function invocation, same doc §16
+	KindSwitch       // 🔘 -- multi-way selector, same doc §17
+	KindCase         // 🔹 -- switch alternative, same doc §17
+	KindDefault      // 🔸 -- default switch alternative, same doc §17
 	KindMatch        // 🔍
 	KindScalar       // 💧
 	KindVector       // 🌊
@@ -95,6 +100,16 @@ func (k Kind) String() string {
 		return "EQ"
 	case KindLet:
 		return "LET"
+	case KindLambda:
+		return "LAMBDA"
+	case KindCall:
+		return "CALL"
+	case KindSwitch:
+		return "SWITCH"
+	case KindCase:
+		return "CASE"
+	case KindDefault:
+		return "DEFAULT"
 	case KindMatch:
 		return "MATCH"
 	case KindScalar:

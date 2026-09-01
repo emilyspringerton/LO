@@ -225,3 +225,84 @@ func TestParseLetRefReachesOuterBinding(t *testing.T) {
 		t.Errorf("expected the right operand to be LetRef{Depth: 0} (the inner binding), got %+v", arith.Right)
 	}
 }
+
+// TestParseSwitch -- LO_Formal_Grammar_Phase_0_Complete.md §17/18's own worked example
+// (founder real-time: "add switch and case"): `SWITCH S1 (CASE S0 -> S0) (CASE S1 -> S3)
+// (CASE S2 -> S1) (DEFAULT -> S3)`.
+func TestParseSwitch(t *testing.T) {
+	toks, err := lexer.Lex("🔘 🌒 🔹 🌑 🌑 🔹 🌒 🌔 🔹 🌓 🌒 🔸 🌔;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	sw, ok := prog.Body.(Switch)
+	if !ok {
+		t.Fatalf("expected a Switch, got %T", prog.Body)
+	}
+	if sw.Selector.(State).Value != 1 {
+		t.Errorf("expected the selector to be S1, got %+v", sw.Selector)
+	}
+	if len(sw.Cases) != 3 {
+		t.Fatalf("expected 3 cases, got %d", len(sw.Cases))
+	}
+	wantMatches := []int{0, 1, 2}
+	wantBodies := []int{0, 3, 1}
+	for i, c := range sw.Cases {
+		if c.Match != wantMatches[i] {
+			t.Errorf("case %d: expected match %d, got %d", i, wantMatches[i], c.Match)
+		}
+		if c.Body.(State).Value != wantBodies[i] {
+			t.Errorf("case %d: expected body S%d, got %+v", i, wantBodies[i], c.Body)
+		}
+	}
+	if sw.Default.(State).Value != 3 {
+		t.Errorf("expected the default to be S3, got %+v", sw.Default)
+	}
+}
+
+// TestParseSwitchRequiresDefault -- real, deliberate v0 restriction named in switch_'s own doc
+// comment: a SWITCH with no DEFAULT is a real parse error here, not an implicit VOID fallback.
+func TestParseSwitchRequiresDefault(t *testing.T) {
+	toks, err := lexer.Lex("🔘 🌒 🔹 🌒 🌔;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	if _, err := Parse(toks); err == nil {
+		t.Fatal("expected a parse error for a SWITCH with no DEFAULT")
+	}
+}
+
+// TestParseLambdaAndCall -- LO_Formal_Grammar_Phase_0_Complete.md §15/16 (founder real-time:
+// "🐪 LAMBDA", formalized as 💠 in the uploaded grammar doc, plus "add ... LAMBDA"): `CALL
+// (LAMBDA x -> x XOR4 S1) S2`.
+func TestParseLambdaAndCall(t *testing.T) {
+	toks, err := lexer.Lex("📞 💠 🧲 🔀 🌒 🌓;")
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	call, ok := prog.Body.(Call)
+	if !ok {
+		t.Fatalf("expected a Call, got %T", prog.Body)
+	}
+	lambda, ok := call.Fn.(Lambda)
+	if !ok {
+		t.Fatalf("expected Call.Fn to be a Lambda, got %T", call.Fn)
+	}
+	arith, ok := lambda.Body.(Arith)
+	if !ok {
+		t.Fatalf("expected the Lambda's body to be an Arith, got %T", lambda.Body)
+	}
+	if _, ok := arith.Left.(LetRef); !ok {
+		t.Errorf("expected the Arith's left operand to be a LetRef (the lambda's own parameter), got %T", arith.Left)
+	}
+	if call.Arg.(State).Value != 2 {
+		t.Errorf("expected the Call's own argument to be S2, got %+v", call.Arg)
+	}
+}

@@ -91,7 +91,55 @@ func (p *parser) expr() (Expr, error) {
 	if p.peek().Kind == lexer.KindLet {
 		return p.let_()
 	}
+	if p.peek().Kind == lexer.KindSwitch {
+		return p.switch_()
+	}
 	return p.ternary()
+}
+
+// switch_ implements LO_Formal_Grammar_Phase_0_Complete.md §17's
+// `Switch ::= SWITCH Value Case+ Default?` (founder real-time: "add switch and case"). Real,
+// narrow v0 differences from the source doc, named rather than silently assumed: each `Case`'s
+// own match value is a bare `State` (0-3), not the doc's own full `Value` generality -- every
+// worked example in the source doc itself uses a bare state; and `Default` is REQUIRED here
+// rather than optional, sidestepping the doc's own separate "no case matches, no default ->
+// VOID" fallback-typing question for this v0 (this compiler's scalar-I32-only emitter has no
+// real way to produce a VOID result anyway -- see the emitter's own existing VoidExpr handling).
+func (p *parser) switch_() (Expr, error) {
+	p.next() // consume SWITCH
+	selector, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+
+	var cases []SwitchCase
+	for p.peek().Kind == lexer.KindCase {
+		p.next()
+		matchTok := p.peek()
+		if matchTok.Kind != lexer.KindState {
+			return nil, p.errf("expected a base4 state as a CASE's own match value, got %s", matchTok.Kind)
+		}
+		p.next()
+		body, err := p.expr()
+		if err != nil {
+			return nil, err
+		}
+		cases = append(cases, SwitchCase{Match: matchTok.State, Body: body})
+	}
+	if len(cases) == 0 {
+		return nil, p.errf("expected at least one CASE after SWITCH's own selector")
+	}
+
+	if p.peek().Kind != lexer.KindDefault {
+		return nil, p.errf("expected a required DEFAULT after SWITCH's own CASE clauses (this v0 doesn't support an implicit VOID fallback)")
+	}
+	p.next()
+	defaultExpr, err := p.expr()
+	if err != nil {
+		return nil, err
+	}
+
+	return Switch{Selector: selector, Cases: cases, Default: defaultExpr}, nil
 }
 
 // let_ implements GRAMMAR.md §2's `Let ::= LET Value Expr` (added 2026-08-30, founder real-time:
@@ -209,8 +257,35 @@ func (p *parser) primary() (Expr, error) {
 		return LetRef{Depth: stateTok.State}, nil
 	}
 
+	// LO_Formal_Grammar_Phase_0_Complete.md §15's `Lambda ::= LAMBDA LambdaParams Expr`, real,
+	// narrow v0: exactly one implicit parameter (see the Lambda AST node's own doc comment for
+	// why this doesn't parse the source doc's own quoted-string `LambdaParams`).
+	if tok.Kind == lexer.KindLambda {
+		p.next()
+		body, err := p.expr()
+		if err != nil {
+			return nil, err
+		}
+		return Lambda{Body: body}, nil
+	}
+
+	// LO_Formal_Grammar_Phase_0_Complete.md §16's `Call ::= CALL Value ArgList`, real, narrow v0:
+	// exactly one argument (see the Call AST node's own doc comment).
+	if tok.Kind == lexer.KindCall {
+		p.next()
+		fn, err := p.primary()
+		if err != nil {
+			return nil, err
+		}
+		arg, err := p.primary()
+		if err != nil {
+			return nil, err
+		}
+		return Call{Fn: fn, Arg: arg}, nil
+	}
+
 	if tok.Kind != lexer.KindState {
-		return nil, p.errf("expected a base4 state, VOID, MAGNET, or a depth-index vector, got %s", tok.Kind)
+		return nil, p.errf("expected a base4 state, VOID, MAGNET, a depth-index vector, LAMBDA, or CALL, got %s", tok.Kind)
 	}
 	p.next()
 	return State{Value: tok.State}, nil

@@ -126,6 +126,28 @@ func TestEmitLetRefReachesOuterBindingRunsCorrectly(t *testing.T) {
 	}
 }
 
+// TestEmitSwitchRunsCorrectly -- real, live verification of the new Switch/Case lowering
+// (founder real-time: "add switch and case"), matching LO_Formal_Grammar_Phase_0_Complete.md
+// §18's own worked example exactly: SWITCH S1 with cases S0->S0, S1->S3, S2->S1, DEFAULT->S3.
+func TestEmitSwitchRunsCorrectly(t *testing.T) {
+	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 🔘 🌒 🔹 🌑 🌑 🔹 🌒 🌔 🔹 🌓 🌒 🔸 🌔;")
+	// The spec's own worked example: switching on 1 matches the S1 case, result 3.
+	if exitCode != 3 {
+		t.Errorf("expected exit code 3 (SWITCH S1 matches CASE S1 -> S3), got %d", exitCode)
+	}
+}
+
+// TestEmitLambdaCallRunsCorrectly -- real, live verification of the new Lambda/Call lowering:
+// `CALL (LAMBDA x -> x XOR4 S1) S2` must actually compute 2 XOR4 1 = 3, confirming PARENA really
+// accepts an immediately-invoked inline `fn` literal (`((fn [(x:I32)] body) arg)`), not just that
+// it compiles as an unused expression.
+func TestEmitLambdaCallRunsCorrectly(t *testing.T) {
+	exitCode := compileRunAndGetExitCode(t, "🚪 🔢 📞 💠 🧲 🔀 🌒 🌓;")
+	if exitCode != 3 {
+		t.Errorf("expected exit code 3 (CALL (LAMBDA x -> x XOR4 S1) S2 = 2^1), got %d", exitCode)
+	}
+}
+
 // parena/burrow binaries aren't reachable in this environment, rather than silently passing --
 // a real, honest environment-dependent check.
 func TestEmitCompilesThroughParenaAndBurrow(t *testing.T) {

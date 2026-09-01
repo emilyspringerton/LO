@@ -142,6 +142,56 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 		}
 		return fmt.Sprintf("(if %s %s %s)", cond, trueExpr, falseExpr), nil
 
+	case parser.Switch:
+		// Real, direct lowering to a nested PARENA if/= chain -- the same shape Ternary already
+		// emits, just chained once per Case, ending in the (required, see the parser's own
+		// switch_ doc comment) Default.
+		selector, err := emitExpr(v.Selector, depth)
+		if err != nil {
+			return "", err
+		}
+		tail, err := emitExpr(v.Default, depth)
+		if err != nil {
+			return "", err
+		}
+		for i := len(v.Cases) - 1; i >= 0; i-- {
+			c := v.Cases[i]
+			body, err := emitExpr(c.Body, depth)
+			if err != nil {
+				return "", err
+			}
+			tail = fmt.Sprintf("(if (= %s %d) %s %s)", selector, c.Match, body, tail)
+		}
+		return tail, nil
+
+	case parser.Lambda:
+		// Real, direct lowering to a real PARENA anonymous function value (`fn`), reusing the
+		// same depth-index binding scheme Let/LetRef already use -- see the Lambda AST node's
+		// own doc comment for why this diverges from the source doc's own named-parameter form.
+		body, err := emitExpr(v.Body, depth+1)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(fn [(x%d : I32)] %s)", depth, body), nil
+
+	case parser.Call:
+		// Real, honest v0 restriction: Fn must be a real Lambda literal (see the Call AST node's
+		// own doc comment) -- caught here as a real, named emit-time error rather than emitting
+		// broken .prn for anything else.
+		lambda, ok := v.Fn.(parser.Lambda)
+		if !ok {
+			return "", &Error{Msg: fmt.Sprintf("Call's own Fn must be a Lambda literal in this v0, got %T", v.Fn)}
+		}
+		fnStr, err := emitExpr(lambda, depth)
+		if err != nil {
+			return "", err
+		}
+		argStr, err := emitExpr(v.Arg, depth)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(%s %s)", fnStr, argStr), nil
+
 	default:
 		return "", &Error{Msg: fmt.Sprintf("unsupported expression node %T", e)}
 	}
