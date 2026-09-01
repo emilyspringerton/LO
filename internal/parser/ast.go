@@ -148,6 +148,15 @@ type Call struct {
 
 func (Call) isExpr() {}
 
+// StringLit is a bare `LITERAL` (🔤"...") used directly as a `Value` — LO's first real
+// String-typed value, added 2026-09-01 (founder real-time: "continue"). See the parser's own
+// `primary` doc comment for why this is a real, flagged, minimal extension of the source doc's
+// own `Value` production (which never lists a bare `Literal`, only `PatternValue`), not a guess
+// at something the doc specifies differently.
+type StringLit struct{ Text string }
+
+func (StringLit) isExpr() {}
+
 // Match is LO_Formal_Grammar_Phase_0_Complete.md §12/§29's `Cond ::= Value MATCH Pattern`, the
 // pattern-matching sibling of `Eq` — used only as a `Ternary`'s own `Cond` in this v0, same as
 // `Eq`. Real, honest, narrow scope: `Subject` is parsed as a `Value` exactly like `Eq`'s own

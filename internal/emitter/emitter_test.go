@@ -152,6 +152,47 @@ int main(void) {
 	return result
 }
 
+// compileRunAndGetString verifies a STRING-Door LO program (`main` returning a real PARENA
+// `String`, i.e. C `char *`) the same way compileRunAndGetFloat verifies F64: `char *main(void)`
+// compiles (again with a real -Wmain warning) but its process exit code is meaningless (the
+// pointer bit pattern truncated into an OS exit status, not a real string result), so this uses
+// the same `#define main`-rename driver technique, printing the returned `char *` directly via
+// `printf("%s\n", ...)` instead of relying on exit code.
+func compileRunAndGetString(t *testing.T, src string) string {
+	t.Helper()
+	_, outC := compileToGeneratedC(t, src)
+
+	dir := filepath.Dir(outC)
+	driverC := filepath.Join(dir, "driver.c")
+	driver := fmt.Sprintf(`#include "parena_runtime.h"
+#include <stdio.h>
+#define main lo_generated_main
+#include %q
+#undef main
+int main(void) {
+    printf("%%s\n", lo_generated_main());
+    return 0;
+}
+`, outC)
+	if err := os.WriteFile(driverC, []byte(driver), 0o644); err != nil {
+		t.Fatalf("could not write the real #define-main driver: %v", err)
+	}
+
+	outBin := filepath.Join(dir, "driverbin")
+	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
+	runtimeDir := "../../../PARENA/runtime"
+	cc := exec.Command("cc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Werror", driverC, runtimeC, "-I", runtimeDir, "-o", outBin, "-lm")
+	if out, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s", err, out)
+	}
+
+	out, err := exec.Command(outBin).Output()
+	if err != nil {
+		t.Fatalf("running the compiled driver failed: %v", err)
+	}
+	return strings.TrimSuffix(string(out), "\n")
+}
+
 // TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
 // real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
 // then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,
@@ -228,6 +269,26 @@ func TestEmitDoubleDoorRunsCorrectly(t *testing.T) {
 	got := compileRunAndGetFloat(t, "🚪 ⚪ 🌒 🔀 🌓;")
 	if got != 3.0 {
 		t.Errorf("expected 3.0 (DOOR DOUBLE S1 XOR4 S2), got %v", got)
+	}
+}
+
+// TestEmitStringDoorRunsCorrectly -- real, live verification of LO's first real String-typed
+// value (parser.StringLit, added 2026-09-01, founder real-time: "continue"): `DOOR STRING
+// 🔤"hello"` really compiles through parena build + cc + execution and prints the literal text.
+func TestEmitStringDoorRunsCorrectly(t *testing.T) {
+	got := compileRunAndGetString(t, `🚪 📜 🔤"hello";`)
+	if got != "hello" {
+		t.Errorf("expected \"hello\", got %q", got)
+	}
+}
+
+// TestEmitStringDoorEscapesBackslash -- real, live verification of emitExpr's own backslash-
+// doubling for StringLit (see its doc comment): a literal backslash in LO source must survive
+// as a literal backslash at runtime, not silently start a PARENA-level escape sequence.
+func TestEmitStringDoorEscapesBackslash(t *testing.T) {
+	got := compileRunAndGetString(t, `🚪 📜 🔤"a\b";`)
+	if got != `a\b` {
+		t.Errorf("expected %q, got %q", `a\b`, got)
 	}
 }
 

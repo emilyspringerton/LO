@@ -45,8 +45,13 @@ func Emit(prog *parser.Program) (string, error) {
 			// import for one real one-line cast).
 			returnType = "F64"
 			needsF64Cast = true
+		case parser.TypeString:
+			// LO's first real String-typed Door, added 2026-09-01 (founder real-time: "continue"),
+			// paired with parser.StringLit -- no cast needed, PARENA's own `String` maps directly
+			// to C `char *` (confirmed against src/emit.c), same as this v0's I32 Door.
+			returnType = "String"
 		default:
-			return "", &Error{Msg: "only a DOOR I32, FLOAT, DOUBLE, or no Door is supported in this v0"}
+			return "", &Error{Msg: "only a DOOR I32, FLOAT, DOUBLE, STRING, or no Door is supported in this v0"}
 		}
 	}
 
@@ -95,6 +100,16 @@ func emitExpr(e parser.Expr, depth int) (string, error) {
 	switch v := e.(type) {
 	case parser.State:
 		return fmt.Sprintf("%d", v.Value), nil
+
+	case parser.StringLit:
+		// PARENA's own reader unescapes `\n`/`\t`/`\"`/`\\` inside a double-quoted string literal
+		// (confirmed against src/lexer.c's own lex_string), so any literal backslash in LO's raw,
+		// unescaped Text (see the lexer's own lexQuotedText doc comment -- LO itself does zero
+		// escape processing inside 🔤"...") must be doubled here or it would silently start an
+		// unintended PARENA-level escape sequence instead of surviving as a literal backslash. A
+		// literal `"` can't appear in Text at all (LO's own lexer treats it as the closing quote),
+		// so no quote-escaping is needed here.
+		return "\"" + strings.ReplaceAll(v.Text, `\`, `\\`) + "\"", nil
 
 	case parser.Let:
 		// Real, direct lowering to PARENA's own `let` (see NORTHSTAR.md/GRAMMAR.md's own

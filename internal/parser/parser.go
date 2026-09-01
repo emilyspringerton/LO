@@ -303,8 +303,21 @@ func (p *parser) primary() (Expr, error) {
 		return Call{Fn: fn, Arg: arg}, nil
 	}
 
+	// StringLit -- a bare LITERAL used directly as a Value, not just inside a Pattern. Real,
+	// flagged-not-silently-invented extension: LO_Formal_Grammar_Phase_0_Complete.md §4's own
+	// `Value` production list never actually includes a bare `Literal` (only `PatternValue`,
+	// itself just `Pattern`) — every one of the doc's own real STRING-Door examples (§5, e.g.
+	// `🚪 📜 value ;`) writes the placeholder ENGLISH WORD "value", never real LO source for one.
+	// Adding this is the minimal, obvious reading of what a STRING Door's own body must be able
+	// to produce (LO otherwise has NO way to write a string value at all), not a guess at
+	// something the doc actively specifies differently.
+	if tok.Kind == lexer.KindLiteral {
+		p.next()
+		return StringLit{Text: tok.Text}, nil
+	}
+
 	if tok.Kind != lexer.KindState {
-		return nil, p.errf("expected a base4 state, VOID, MAGNET, a depth-index vector, LAMBDA, or CALL, got %s", tok.Kind)
+		return nil, p.errf("expected a base4 state, VOID, MAGNET, a depth-index vector, LAMBDA, CALL, or LITERAL, got %s", tok.Kind)
 	}
 	p.next()
 	return State{Value: tok.State}, nil

@@ -307,6 +307,26 @@ func TestParseLambdaAndCall(t *testing.T) {
 	}
 }
 
+// TestParseStringLitDoor -- LO's first real String-typed value, added 2026-09-01 (founder
+// real-time: "continue"): `DOOR STRING 🔤"hello"`.
+func TestParseStringLitDoor(t *testing.T) {
+	toks, err := lexer.Lex(`🚪 📜 🔤"hello";`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if !prog.HasDoor || prog.DoorType != TypeString {
+		t.Fatalf("expected a DOOR STRING, got HasDoor=%v DoorType=%v", prog.HasDoor, prog.DoorType)
+	}
+	lit, ok := prog.Body.(StringLit)
+	if !ok || lit.Text != "hello" {
+		t.Errorf("expected StringLit(\"hello\"), got %+v", prog.Body)
+	}
+}
+
 // TestParseMatchLiteral -- LO_Formal_Grammar_Phase_0_Complete.md §29's exact-match example:
 // `value 🔍 🏁 🔤"cat" 🛑` (^cat$).
 func TestParseMatchLiteral(t *testing.T) {

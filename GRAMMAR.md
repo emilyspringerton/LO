@@ -75,6 +75,26 @@ subject (LO has no string VALUES in the language at all yet). Both remain real, 
 larger follow-ups. 24 new emitter tests (unit-level, string-output only — no compile/run yet,
 since there's no real `.prn` emission for this node yet either).
 
+**Same day, continued a third time**: LO has its first real String-typed VALUE. `StringLit` (a
+bare `LITERAL` used directly as a `Value`, not just inside a `Pattern`) is now real,
+parsed/emitted, and `Door STRING` actually works — a real, flagged, minimal extension of the
+source doc's own `Value` production, which never lists a bare `Literal` (only `PatternValue`);
+every one of the doc's own STRING-Door examples (§5) writes the placeholder English word "value",
+never real LO source for one. **Verified end-to-end, not just shape-checked**: `DOOR STRING
+🔤"hello"` really compiles through `parena build` + `cc` + execution and prints `hello` — using
+the same `#define main`-rename driver technique the FLOAT/DOUBLE work already established
+(PARENA's `String` maps directly to C `char *`, confirmed against `src/emit.c`; `char *main(void)`
+has the same real "process exit code is meaningless" problem F64 did). **One real, checked-not-
+assumed correctness fix along the way**: PARENA's own string-literal reader unescapes `\n`/`\t`/
+`\"`/`\\` (confirmed against `src/lexer.c`'s `lex_string`), but LO's own `lexQuotedText` does ZERO
+escape processing on its raw text — so a literal backslash in LO source has to be doubled when
+emitted, or it would silently start an unintended PARENA-level escape sequence instead of
+surviving as itself; verified live with a real `a\b` round-trip. Real, honest, not-yet-attempted
+next step, unchanged from before: wiring `MATCH`/`Pattern` into an actual `regex/pcre` call still
+needs the Arena-threading redesign named in the previous update — this `StringLit` work makes that
+the ONLY remaining blocker, not a second one. 1 new parser test + 2 new real end-to-end emitter
+tests.
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of
