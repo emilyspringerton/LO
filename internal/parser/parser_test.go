@@ -306,3 +306,205 @@ func TestParseLambdaAndCall(t *testing.T) {
 		t.Errorf("expected the Call's own argument to be S2, got %+v", call.Arg)
 	}
 }
+
+// TestParseMatchLiteral -- LO_Formal_Grammar_Phase_0_Complete.md §29's exact-match example:
+// `value 🔍 🏁 🔤"cat" 🛑` (^cat$).
+func TestParseMatchLiteral(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🏁 🔤"cat" 🛑 ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	tern, ok := prog.Body.(Ternary)
+	if !ok {
+		t.Fatalf("expected a Ternary, got %T", prog.Body)
+	}
+	m, ok := tern.Cond.(Match)
+	if !ok {
+		t.Fatalf("expected the Cond to be a Match, got %T", tern.Cond)
+	}
+	if m.Subject.(State).Value != 1 {
+		t.Errorf("expected the subject to be S1, got %+v", m.Subject)
+	}
+	if len(m.Pattern.Alternatives) != 1 {
+		t.Fatalf("expected 1 alternative, got %d", len(m.Pattern.Alternatives))
+	}
+	seq := m.Pattern.Alternatives[0]
+	if len(seq) != 3 {
+		t.Fatalf("expected 3 pattern items (^, literal, $), got %d: %+v", len(seq), seq)
+	}
+	if !seq[0].IsAnchor || seq[0].AnchorEnd {
+		t.Errorf("expected item 0 to be a START anchor, got %+v", seq[0])
+	}
+	lit, ok := seq[1].Atom.(PatternLiteral)
+	if !ok || lit.Text != "cat" {
+		t.Errorf("expected item 1 to be Literal(\"cat\"), got %+v", seq[1])
+	}
+	if !seq[2].IsAnchor || !seq[2].AnchorEnd {
+		t.Errorf("expected item 2 to be an END anchor, got %+v", seq[2])
+	}
+}
+
+// TestParseMatchQuantifierAndWildcard -- §21/§22's own worked examples: `c.t` and `a*`/`a+`/`a?`.
+func TestParseMatchQuantifierAndWildcard(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🔤"c" 🃏 🔤"t" 🌌 ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	seq := m.Pattern.Alternatives[0]
+	if len(seq) != 3 {
+		t.Fatalf("expected 3 pattern items, got %d: %+v", len(seq), seq)
+	}
+	if _, ok := seq[0].Atom.(PatternLiteral); !ok {
+		t.Errorf("expected item 0 to be a Literal, got %+v", seq[0])
+	}
+	if _, ok := seq[1].Atom.(PatternWildcard); !ok {
+		t.Errorf("expected item 1 to be a Wildcard, got %+v", seq[1])
+	}
+	if seq[2].Quant != QuantStar {
+		t.Errorf("expected item 2's trailing STAR quantifier, got %+v", seq[2])
+	}
+}
+
+// TestParseMatchAlternation -- §24's own worked example: `cat|dog|fox`.
+func TestParseMatchAlternation(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🔤"cat" 🛤️ 🔤"dog" 🛤️ 🔤"fox" ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	if len(m.Pattern.Alternatives) != 3 {
+		t.Fatalf("expected 3 alternatives, got %d", len(m.Pattern.Alternatives))
+	}
+	wantWords := []string{"cat", "dog", "fox"}
+	for i, alt := range m.Pattern.Alternatives {
+		if len(alt) != 1 {
+			t.Fatalf("alternative %d: expected 1 item, got %d", i, len(alt))
+		}
+		lit, ok := alt[0].Atom.(PatternLiteral)
+		if !ok || lit.Text != wantWords[i] {
+			t.Errorf("alternative %d: expected Literal(%q), got %+v", i, wantWords[i], alt[0])
+		}
+	}
+}
+
+// TestParseMatchCharacterClassWithRange -- §26's own worked example: `[a-zA-Z0-9]`.
+func TestParseMatchCharacterClassWithRange(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🅰️ 🔤"a" ↔️ 🔤"z" 🔤"A" ↔️ 🔤"Z" 🔤"0" ↔️ 🔤"9" ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	seq := m.Pattern.Alternatives[0]
+	if len(seq) != 1 {
+		t.Fatalf("expected 1 pattern item (one class), got %d: %+v", len(seq), seq)
+	}
+	class, ok := seq[0].Atom.(PatternClass)
+	if !ok {
+		t.Fatalf("expected a PatternClass, got %T", seq[0].Atom)
+	}
+	if class.Negated {
+		t.Error("expected a positive class (CLASS, not NCLASS)")
+	}
+	if len(class.Items) != 3 {
+		t.Fatalf("expected 3 ranges, got %d: %+v", len(class.Items), class.Items)
+	}
+	wantRanges := [][2]string{{"a", "z"}, {"A", "Z"}, {"0", "9"}}
+	for i, want := range wantRanges {
+		item := class.Items[i]
+		if !item.IsRange || item.From != want[0] || item.To != want[1] {
+			t.Errorf("range %d: expected %s-%s, got %+v", i, want[0], want[1], item)
+		}
+	}
+}
+
+// TestParseMatchNegatedClass -- §25's own worked example: `[^abc]`.
+func TestParseMatchNegatedClass(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🚫 🔤"a" 🔤"b" 🔤"c" ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	class := m.Pattern.Alternatives[0][0].Atom.(PatternClass)
+	if !class.Negated {
+		t.Error("expected a negated class (NCLASS)")
+	}
+	if len(class.Items) != 3 {
+		t.Fatalf("expected 3 bare members, got %d: %+v", len(class.Items), class.Items)
+	}
+	for i, want := range []string{"a", "b", "c"} {
+		if class.Items[i].IsRange || class.Items[i].Char != want {
+			t.Errorf("member %d: expected bare %q, got %+v", i, want, class.Items[i])
+		}
+	}
+}
+
+// TestParseMatchEscaped -- §27's own worked example: an escaped STAR represents a literal `*`.
+func TestParseMatchEscaped(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🛡️ 🌌 ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	esc, ok := m.Pattern.Alternatives[0][0].Atom.(PatternEscaped)
+	if !ok {
+		t.Fatalf("expected a PatternEscaped, got %T", m.Pattern.Alternatives[0][0].Atom)
+	}
+	if esc.Kind != lexer.KindStar {
+		t.Errorf("expected the escaped token to be STAR, got %s", esc.Kind)
+	}
+}
+
+// TestParseMatchQuantifiedGroup -- §28's own worked example: `(ab)+`.
+func TestParseMatchQuantifiedGroup(t *testing.T) {
+	toks, err := lexer.Lex(`🌒 🔍 🗜️ 🔤"ab" 🗜️ ☄️ ❓ 🌓 : 🌔;`)
+	if err != nil {
+		t.Fatalf("unexpected lex error: %v", err)
+	}
+	prog, err := Parse(toks)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	m := prog.Body.(Ternary).Cond.(Match)
+	seq := m.Pattern.Alternatives[0]
+	if len(seq) != 1 {
+		t.Fatalf("expected 1 pattern item (one quantified group), got %d: %+v", len(seq), seq)
+	}
+	group, ok := seq[0].Atom.(PatternGroup)
+	if !ok {
+		t.Fatalf("expected a PatternGroup, got %T", seq[0].Atom)
+	}
+	if seq[0].Quant != QuantPlus {
+		t.Errorf("expected the group's own trailing ONEPLUS quantifier, got %+v", seq[0].Quant)
+	}
+	if len(group.Seq) != 1 {
+		t.Fatalf("expected 1 item inside the group, got %d: %+v", len(group.Seq), group.Seq)
+	}
+	if lit, ok := group.Seq[0].Atom.(PatternLiteral); !ok || lit.Text != "ab" {
+		t.Errorf("expected the group's own content to be Literal(\"ab\"), got %+v", group.Seq[0])
+	}
+}

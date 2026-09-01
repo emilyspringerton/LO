@@ -165,26 +165,39 @@ func (p *parser) let_() (Expr, error) {
 }
 
 // ternary implements GRAMMAR.md §2's `Ternary ::= Cond QUERY Expr COLON Expr | Value` and §3.2's
-// rule that Cond is always an EQ application, never a bare Ternary — parsed here by first
-// parsing a Value, then checking for a following EQ to decide whether this is a Cond at all.
+// rule that Cond is always an EQ/MATCH application, never a bare Ternary — parsed here by first
+// parsing a Value, then checking for a following EQ or MATCH to decide whether this is a Cond at
+// all. MATCH added per LO_Formal_Grammar_Phase_0_Complete.md §12's `Cond ::= Value EQ Value |
+// Value MATCH Pattern` (real, honest, parser-only for now — see Match's own doc comment in
+// ast.go for why no emitter support exists yet).
 func (p *parser) ternary() (Expr, error) {
 	left, err := p.value()
 	if err != nil {
 		return nil, err
 	}
 
-	if p.peek().Kind != lexer.KindEq {
+	var cond Expr
+	switch p.peek().Kind {
+	case lexer.KindEq:
+		p.next()
+		right, err := p.value()
+		if err != nil {
+			return nil, err
+		}
+		cond = Eq{Left: left, Right: right}
+	case lexer.KindMatch:
+		p.next()
+		pat, err := p.pattern()
+		if err != nil {
+			return nil, err
+		}
+		cond = Match{Subject: left, Pattern: pat}
+	default:
 		return left, nil
 	}
-	p.next() // consume EQ
-	right, err := p.value()
-	if err != nil {
-		return nil, err
-	}
-	cond := Eq{Left: left, Right: right}
 
 	if p.peek().Kind != lexer.KindQuery {
-		return nil, p.errf("expected QUERY after an EQ condition")
+		return nil, p.errf("expected QUERY after an EQ/MATCH condition")
 	}
 	p.next()
 	trueExpr, err := p.expr()
@@ -295,6 +308,190 @@ func (p *parser) primary() (Expr, error) {
 	}
 	p.next()
 	return State{Value: tok.State}, nil
+}
+
+// pattern implements LO_Formal_Grammar_Phase_0_Complete.md §19/§24's
+// `Pattern ::= PatternSequence | PatternSequence ALT PatternSequence+`.
+func (p *parser) pattern() (Pattern, error) {
+	first, err := p.patternSequence()
+	if err != nil {
+		return Pattern{}, err
+	}
+	alts := []PatternSequence{first}
+	for p.peek().Kind == lexer.KindAlt {
+		p.next()
+		seq, err := p.patternSequenceIn(false)
+		if err != nil {
+			return Pattern{}, err
+		}
+		alts = append(alts, seq)
+	}
+	return Pattern{Alternatives: alts}, nil
+}
+
+func (p *parser) patternSequence() (PatternSequence, error) { return p.patternSequenceIn(false) }
+
+// patternSequenceIn implements §19's `PatternSequence ::= PatternItem+`. Real, honest stopping
+// rule the source doc never states explicitly: greedy, ending at the first token that can't
+// start a PatternItem (ALT, a GROUP's own closer, or the end of input). `insideGroup` is true
+// only when parsing a PatternGroup's own body -- see isPatternItemStart's own doc comment for
+// why GROUP itself needs this to disambiguate "open a nested group" from "this is my closer".
+func (p *parser) patternSequenceIn(insideGroup bool) (PatternSequence, error) {
+	var items PatternSequence
+	for isPatternItemStart(p.peek().Kind, insideGroup) {
+		item, err := p.patternItem(insideGroup)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		return nil, p.errf("expected at least one pattern item")
+	}
+	return items, nil
+}
+
+// isPatternItemStart reports whether k can start a new PatternItem. GROUP is context-sensitive:
+// nested capture groups are explicitly out of v1 scope (doc §33), so while already inside a
+// group's own body (insideGroup == true) a GROUP token is always read as THIS group's own
+// closing delimiter, never as opening a new nested one -- outside a group, it opens one.
+func isPatternItemStart(k lexer.Kind, insideGroup bool) bool {
+	switch k {
+	case lexer.KindStart, lexer.KindEnd, lexer.KindLiteral, lexer.KindWildcard,
+		lexer.KindClass, lexer.KindNClass, lexer.KindEscape:
+		return true
+	case lexer.KindGroup:
+		return !insideGroup
+	default:
+		return false
+	}
+}
+
+// patternItem implements §19's `PatternItem ::= Anchor | Atom Quantifier? | PatternGroup` — see
+// PatternItem's own ast.go doc comment for the real, minor refinement (a PatternGroup may itself
+// carry a trailing Quantifier, per §28's own worked example).
+func (p *parser) patternItem(insideGroup bool) (PatternItem, error) {
+	switch p.peek().Kind {
+	case lexer.KindStart:
+		p.next()
+		return PatternItem{IsAnchor: true, AnchorEnd: false}, nil
+	case lexer.KindEnd:
+		p.next()
+		return PatternItem{IsAnchor: true, AnchorEnd: true}, nil
+	case lexer.KindGroup:
+		p.next() // consume the opening GROUP
+		seq, err := p.patternSequenceIn(true)
+		if err != nil {
+			return PatternItem{}, err
+		}
+		if p.peek().Kind != lexer.KindGroup {
+			return PatternItem{}, p.errf("expected a closing GROUP (🗜️) to end this pattern group")
+		}
+		p.next() // consume the closing GROUP
+		return PatternItem{Atom: PatternGroup{Seq: seq}, Quant: p.patternQuantifier()}, nil
+	default:
+		atom, err := p.patternAtom()
+		if err != nil {
+			return PatternItem{}, err
+		}
+		return PatternItem{Atom: atom, Quant: p.patternQuantifier()}, nil
+	}
+}
+
+func (p *parser) patternQuantifier() QuantKind {
+	switch p.peek().Kind {
+	case lexer.KindStar:
+		p.next()
+		return QuantStar
+	case lexer.KindOnePlus:
+		p.next()
+		return QuantPlus
+	case lexer.KindOpt:
+		p.next()
+		return QuantOpt
+	default:
+		return QuantNone
+	}
+}
+
+// patternAtom implements §19's `Atom ::= State | Literal | WILDCARD | CharacterClass | Escaped`
+// — real, deliberate narrowing: the `State` alternative is not parsed here. See Pattern's own
+// ast.go doc comment for why (a likely leftover from LO's older base4-vector pattern grammar,
+// flagged rather than silently either implemented or dropped).
+func (p *parser) patternAtom() (PatternAtom, error) {
+	tok := p.peek()
+	switch tok.Kind {
+	case lexer.KindLiteral:
+		p.next()
+		return PatternLiteral{Text: tok.Text}, nil
+	case lexer.KindWildcard:
+		p.next()
+		return PatternWildcard{}, nil
+	case lexer.KindClass, lexer.KindNClass:
+		return p.patternClass()
+	case lexer.KindEscape:
+		return p.patternEscaped()
+	default:
+		return nil, p.errf("expected a pattern atom (LITERAL, WILDCARD, CLASS/NCLASS, or ESCAPE), got %s", tok.Kind)
+	}
+}
+
+// patternClass implements §25's `CharacterClass ::= CLASS ClassItem+ | NCLASS ClassItem+` and
+// §26's `Range ::= LiteralChar RANGE LiteralChar`. Real, narrow v0: a `LiteralChar` here must be
+// a single-rune LITERAL — the source doc's own worked examples never show a multi-char LITERAL
+// inside a class, so a longer one is a real, honest parse error rather than silently truncated.
+func (p *parser) patternClass() (PatternAtom, error) {
+	negated := p.peek().Kind == lexer.KindNClass
+	p.next() // consume CLASS or NCLASS
+
+	var items []ClassItem
+	for p.peek().Kind == lexer.KindLiteral {
+		lit := p.next()
+		ch, err := p.singleRune(lit.Text)
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().Kind == lexer.KindRange {
+			p.next()
+			toTok := p.peek()
+			if toTok.Kind != lexer.KindLiteral {
+				return nil, p.errf("expected a LITERAL after RANGE (↔️), got %s", toTok.Kind)
+			}
+			p.next()
+			toCh, err := p.singleRune(toTok.Text)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, ClassItem{IsRange: true, From: ch, To: toCh})
+		} else {
+			items = append(items, ClassItem{Char: ch})
+		}
+	}
+	if len(items) == 0 {
+		return nil, p.errf("expected at least one class member after CLASS/NCLASS")
+	}
+	return PatternClass{Negated: negated, Items: items}, nil
+}
+
+func (p *parser) singleRune(s string) (string, error) {
+	if len([]rune(s)) != 1 {
+		return "", p.errf("expected a single-character LITERAL, got %q", s)
+	}
+	return s, nil
+}
+
+// patternEscaped implements §27's `Escaped ::= ESCAPE Escapable`.
+func (p *parser) patternEscaped() (PatternAtom, error) {
+	p.next() // consume ESCAPE
+	tok := p.peek()
+	switch tok.Kind {
+	case lexer.KindLiteral, lexer.KindWildcard, lexer.KindStar, lexer.KindOnePlus, lexer.KindOpt,
+		lexer.KindStart, lexer.KindEnd, lexer.KindAlt, lexer.KindGroup, lexer.KindEscape:
+		p.next()
+		return PatternEscaped{Kind: tok.Kind, Text: tok.Text}, nil
+	default:
+		return nil, p.errf("expected an Escapable token after ESCAPE (🛡️), got %s", tok.Kind)
+	}
 }
 
 func isArithOp(k lexer.Kind) bool {

@@ -148,6 +148,124 @@ type Call struct {
 
 func (Call) isExpr() {}
 
+// Match is LO_Formal_Grammar_Phase_0_Complete.md §12/§29's `Cond ::= Value MATCH Pattern`, the
+// pattern-matching sibling of `Eq` — used only as a `Ternary`'s own `Cond` in this v0, same as
+// `Eq`. Real, honest, narrow scope: `Subject` is parsed as a `Value` exactly like `Eq`'s own
+// operands, even though the doc's own real intent is a String subject (LO has no String VALUES
+// at all yet — a real, separate, larger follow-up, same one `GRAMMAR.md`'s own 2026-09-01 update
+// names). No emitter support exists yet either (`internal/emitter` doesn't handle this node) —
+// this v0 is parser-only, real progress toward the doc's own §19-29 Pattern grammar without
+// pretending the whole feature is done in one pass.
+type Match struct {
+	Subject Expr
+	Pattern Pattern
+}
+
+func (Match) isExpr() {}
+
+// Pattern is LO_Formal_Grammar_Phase_0_Complete.md §19's `Pattern ::= PatternSequence |
+// PatternSequence ALT PatternSequence+` — a deliberately bounded PCRE-oriented pattern language,
+// used as `Match`'s own right-hand operand. `Alternatives` has exactly one member when the
+// source has no top-level `ALT` (§24: alternation binds looser than concatenation).
+//
+// Real, honest, flagged-not-silently-resolved narrowing versus the source doc's own EBNF:
+// `Atom ::= State | Literal | WILDCARD | CharacterClass | Escaped` includes a bare base4 `State`
+// as a pattern atom, but every one of the doc's own worked examples (§20-29) uses only
+// text-oriented atoms (Literal/Wildcard/CharacterClass/Escaped) — this looks like a real leftover
+// from LO's OLDER base4-vector pattern grammar (GRAMMAR.md's own pre-2026-08-31 Pattern/
+// PatternAtom, matched against base4 Vectors, a completely different concept from this doc's own
+// PCRE-over-text design). `patternAtom` below does NOT parse a bare `State` for this reason —
+// named here for the founder's own awareness, not decided unilaterally either way.
+type Pattern struct {
+	Alternatives []PatternSequence
+}
+
+func (Pattern) isExpr() {}
+
+// PatternSequence is §19's `PatternSequence ::= PatternItem+` — one concatenated run of pattern
+// items (anchors, atoms, quantified atoms, or groups).
+type PatternSequence []PatternItem
+
+// PatternItem is one element of a PatternSequence: either a bare Anchor, or an Atom (optionally
+// followed by a Quantifier) — extended, per §28's own worked example (`🗜️ 🔤"ab" 🗜️ ☄️`, a
+// quantified capture group), so `Atom` may itself be a `PatternGroup`, which the doc's own EBNF
+// `PatternItem ::= Anchor | Atom Quantifier? | PatternGroup` technically lists as a THIRD, its
+// own unquantifiable alternative — a real, minor grammar refinement made here because the doc's
+// own worked example directly contradicts its own EBNF otherwise (flagged, not silently patched).
+type PatternItem struct {
+	IsAnchor  bool // when true, Atom/Quant are unused; see AnchorEnd
+	AnchorEnd bool // valid when IsAnchor: false = START (^), true = END ($)
+	Atom      PatternAtom
+	Quant     QuantKind
+}
+
+// QuantKind is one of §22's three v1 quantifiers, or none.
+type QuantKind int
+
+const (
+	QuantNone QuantKind = iota
+	QuantStar          // 🌌 *
+	QuantPlus          // ☄️ +
+	QuantOpt           // 👻 ?
+)
+
+// PatternAtom is one atomic pattern element: a Literal, WILDCARD, a CharacterClass, an Escaped
+// token, or a parenthesized PatternGroup (grouped so it can carry its own Quantifier, per
+// PatternItem's own doc comment above).
+type PatternAtom interface{ isPatternAtom() }
+
+// PatternLiteral is §20's `Literal ::= LITERAL QuotedText` (e.g. `🔤"cat"`).
+type PatternLiteral struct{ Text string }
+
+func (PatternLiteral) isPatternAtom() {}
+
+// PatternWildcard is §21's bare WILDCARD (🃏), matching any one character.
+type PatternWildcard struct{}
+
+func (PatternWildcard) isPatternAtom() {}
+
+// PatternClass is §25/§26's `CharacterClass ::= CLASS ClassItem+ | NCLASS ClassItem+`.
+type PatternClass struct {
+	Negated bool // true for NCLASS (🚫), false for CLASS (🅰️)
+	Items   []ClassItem
+}
+
+func (PatternClass) isPatternAtom() {}
+
+// ClassItem is one CLASS/NCLASS member per §25/§26: a single literal character, or an inclusive
+// a-to-z Range. Real, narrow v0: every `LiteralChar` here must be a single-rune LITERAL — the
+// source doc's own worked examples never show a multi-character LITERAL inside a class, and
+// nothing else in the doc gives multi-char class members a defined meaning.
+type ClassItem struct {
+	IsRange bool
+	Char    string // valid when !IsRange: the single literal character
+	From    string // valid when IsRange
+	To      string // valid when IsRange
+}
+
+// PatternEscaped is §27's `Escaped ::= ESCAPE Escapable`. Real, deliberate design: rather than
+// deciding HERE which literal character each escaped structural/quantifier/anchor token maps to
+// (STAR -> "*", WILDCARD -> ".", etc.), this just records which token was escaped (plus its own
+// Text, when it was itself a LITERAL) and defers the actual character mapping to the emitter —
+// the parser's job is shape, not PCRE-string lowering policy.
+type PatternEscaped struct {
+	Kind lexer.Kind // one of KindLiteral/KindWildcard/KindStar/KindOnePlus/KindOpt/KindStart/
+	// KindEnd/KindAlt/KindGroup/KindEscape, per §27's own Escapable production
+	Text string // valid only when Kind == KindLiteral
+}
+
+func (PatternEscaped) isPatternAtom() {}
+
+// PatternGroup is §28's `PatternGroup ::= GROUP PatternSequence GROUP` ("(ab)"). Held as a real
+// PatternAtom (see PatternItem's own doc comment) so it can carry its own Quantifier, matching
+// the doc's own worked quantified-group example. Real, honest, NOT-yet-enforced boundary: §33
+// lists nested capture groups as out of v1 scope, but nothing in `patternSequence`/`patternAtom`
+// below actually rejects a GROUP nested inside another GROUP — it parses structurally fine today.
+// Flagged as a real follow-up (add the depth check) rather than silently enforced or ignored.
+type PatternGroup struct{ Seq PatternSequence }
+
+func (PatternGroup) isPatternAtom() {}
+
 // Program is GRAMMAR.md §2's top-level `TypedExpr` — an optional Door plus a body Expr.
 type Program struct {
 	DoorType TypeAtom // TypeInvalid if no Door was present

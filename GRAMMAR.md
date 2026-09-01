@@ -40,6 +40,20 @@ emitter support for the actual `Pattern`/`Literal`/`CharacterClass`/`Escaped` pr
 `MATCH` value's own real String-typed subject, itself a new, not-yet-supported LO value kind) is
 a real, separate, larger follow-up — not attempted in this same pass.
 
+**Same day, continued**: the parser side of §19-29's Pattern grammar is now real (`internal/
+parser`'s `pattern`/`patternSequence`/`patternItem`/`patternAtom`/`patternClass`/
+`patternEscaped`), wired into `Cond ::= Value MATCH Pattern` (`Match`, a new AST node alongside
+`Eq`). Covers Literal/Wildcard/Quantifier(STAR/ONEPLUS/OPT)/Anchor(START/END)/Alternation/
+CharacterClass+NCLASS+Range/Escaped/quantifiable PatternGroup — checked against every one of the
+doc's own §20-29 worked examples. **Two real, flagged-not-silently-resolved decisions**: the
+doc's own `Atom ::= State | Literal | ...` includes a bare base4 `State` as a pattern atom, which
+this parser does NOT implement (every worked example uses only text atoms — looks like a
+leftover from LO's older base4-vector pattern grammar, a different concept entirely); and nested
+`PatternGroup`s parse structurally fine today even though §33 lists them as out of v1 scope (no
+depth check exists yet — a real, named follow-up). Still no emitter support and no real String
+values in LO at all — this pass is parser-only, unit-tested against AST shape, not run end-to-end
+(there's nothing yet to run it through). 10 new parser tests.
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of
