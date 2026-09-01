@@ -72,13 +72,44 @@ func compileToGeneratedC(t *testing.T, src string) (dir, outC string) {
 		t.Skipf("PARENA/parena binary not found (run `make build` in PARENA first): %v", err)
 	}
 
+	buildArgs := []string{"build", algebraPath}
+	// PARENA compiles whole-program, from the files actually passed to `build` -- a bare
+	// `(import regex/pcre)` in the generated .prn is not enough on its own (confirmed live: an
+	// isolated `parena build` with only algebra.prn + the generated file fails with "unknown
+	// identifier 'budget'" even though the .prn text itself is correct -- MatchBudget's own
+	// struct-field-set type inference needs regex/pcre.prn's own source actually IN the build).
+	// Always including regex/pcre's own real dependency closure (string/array/io/regex-syntax,
+	// the exact file set stdlib/grep.prn's own turbogrep Makefile target already builds
+	// successfully together) costs nothing for programs that don't use MATCH -- PARENA just
+	// compiles more definitions than get called, same as any other whole-program build.
+	regexDeps := []string{
+		"../../../PARENA/stdlib/string.prn",
+		"../../../PARENA/stdlib/array.prn",
+		"../../../PARENA/stdlib/io.prn",
+		"../../../PARENA/stdlib/regex/syntax.prn",
+		"../../../PARENA/stdlib/regex/pcre.prn",
+	}
+	allDepsPresent := true
+	for _, p := range regexDeps {
+		if _, err := os.Stat(p); err != nil {
+			allDepsPresent = false
+			break
+		}
+	}
+	if allDepsPresent {
+		buildArgs = append(buildArgs, regexDeps...)
+	} else if strings.Contains(prnSource, "regex/pcre") {
+		t.Skipf("PARENA/stdlib/regex/pcre's own dependency closure not fully present, skipping real MATCH cross-compile check")
+	}
+
 	dir = t.TempDir()
 	prnPath := filepath.Join(dir, "main.prn")
 	if err := os.WriteFile(prnPath, []byte(prnSource), 0o644); err != nil {
 		t.Fatalf("could not write generated .prn: %v", err)
 	}
 	outC = filepath.Join(dir, "main.c")
-	cmd := exec.Command(parenaBin, "build", algebraPath, prnPath, "-o", outC)
+	buildArgs = append(buildArgs, prnPath, "-o", outC)
+	cmd := exec.Command(parenaBin, buildArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("parena build failed: %v\n%s", err, out)
 	}
@@ -193,6 +224,45 @@ int main(void) {
 	return strings.TrimSuffix(string(out), "\n")
 }
 
+// compileRunAndGetArenaExitCode verifies an I32-Door LO program whose body contains a MATCH (see
+// Emit's own exprNeedsArena doc comment): the generated function is named `lo-program` (mangled
+// to C `lo_program`) and takes a real caller-supplied `Arena` parameter, so it can no longer BE
+// `main` itself. Unlike compileRunAndGetFloat/compileRunAndGetString, this driver's OWN `main` is
+// an ordinary, correctly-signatured `int main(void)` -- it just constructs a real Arena and
+// returns `lo_program`'s own I32 result as its own process exit code, which is valid here since
+// nothing mismatched-signature is being asked to serve as the entry point.
+func compileRunAndGetArenaExitCode(t *testing.T, src string) int {
+	t.Helper()
+	_, outC := compileToGeneratedC(t, src)
+
+	dir := filepath.Dir(outC)
+	driverC := filepath.Join(dir, "driver.c")
+	driver := fmt.Sprintf(`#include "parena_runtime.h"
+#include %q
+
+int main(void) {
+    Arena arena;
+    arena_init(&arena);
+    return lo_program(&arena);
+}
+`, outC)
+	if err := os.WriteFile(driverC, []byte(driver), 0o644); err != nil {
+		t.Fatalf("could not write the real Arena-constructing driver: %v", err)
+	}
+
+	outBin := filepath.Join(dir, "driverbin")
+	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
+	runtimeDir := "../../../PARENA/runtime"
+	cc := exec.Command("cc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Werror", driverC, runtimeC, "-I", runtimeDir, "-o", outBin, "-lm")
+	if out, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s", err, out)
+	}
+
+	run := exec.Command(outBin)
+	_ = run.Run()
+	return run.ProcessState.ExitCode()
+}
+
 // TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
 // real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
 // then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,
@@ -279,6 +349,36 @@ func TestEmitStringDoorRunsCorrectly(t *testing.T) {
 	got := compileRunAndGetString(t, `🚪 📜 🔤"hello";`)
 	if got != "hello" {
 		t.Errorf("expected \"hello\", got %q", got)
+	}
+}
+
+// TestEmitMatchRunsCorrectly -- real, live, full end-to-end verification of the Arena-threading
+// redesign (Emit's own exprNeedsArena/lo-program branch): `🔤"cat" MATCH ^cat$` really compiles
+// through parena build + cc + execution, calling PARENA's own real regex/pcre/compile+is-match,
+// and returns the correct true/false result -- not just a shape check.
+func TestEmitMatchRunsCorrectly(t *testing.T) {
+	// DOOR I32; ("cat" MATCH ^cat$) ? S1 : S0 -- expect a real match, exit code 1.
+	got := compileRunAndGetArenaExitCode(t, `🚪 🔢 🔤"cat" 🔍 🏁 🔤"cat" 🛑 ❓ 🌒 : 🌑;`)
+	if got != 1 {
+		t.Errorf("expected 1 (\"cat\" matches ^cat$), got %d", got)
+	}
+}
+
+func TestEmitMatchNoMatchRunsCorrectly(t *testing.T) {
+	// DOOR I32; ("dog" MATCH ^cat$) ? S1 : S0 -- expect no match, exit code 0.
+	got := compileRunAndGetArenaExitCode(t, `🚪 🔢 🔤"dog" 🔍 🏁 🔤"cat" 🛑 ❓ 🌒 : 🌑;`)
+	if got != 0 {
+		t.Errorf("expected 0 (\"dog\" does not match ^cat$), got %d", got)
+	}
+}
+
+// TestEmitMatchCharacterClassRunsCorrectly -- exercises patternToPCRE's own class/range/quantifier
+// lowering through a real compile+run, not just the pattern.go-level string check.
+func TestEmitMatchCharacterClassRunsCorrectly(t *testing.T) {
+	// DOOR I32; ("42" MATCH [0-9]+) ? S1 : S0 -- expect a real match, exit code 1.
+	got := compileRunAndGetArenaExitCode(t, `🚪 🔢 🔤"42" 🔍 🅰️ 🔤"0" ↔️ 🔤"9" ☄️ ❓ 🌒 : 🌑;`)
+	if got != 1 {
+		t.Errorf("expected 1 (\"42\" matches [0-9]+), got %d", got)
 	}
 }
 

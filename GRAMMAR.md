@@ -95,6 +95,33 @@ needs the Arena-threading redesign named in the previous update — this `String
 the ONLY remaining blocker, not a second one. 1 new parser test + 2 new real end-to-end emitter
 tests.
 
+**Same day, MATCH finally runs end-to-end**: the Arena-threading redesign landed.
+`exprNeedsArena` walks the body for a `Match` node; when found, the generated function is named
+`lo-program` (not `main` — see below) and takes a real `(dest : Arena @ Region)` parameter, with
+`(import regex/pcre)` added. `Match` lowers to the exact `match`/`Ok`/`Err`/`unbox-bool`
+Result-unwrap shape `stdlib/awk.prn`'s own `rule-matches?` already uses, calling PARENA's real
+`regex/pcre/compile`+`is-match` against `patternToPCRE`'s own text and a `StringLit` subject.
+**Two real, found-live PARENA compiler issues, confirmed in isolation and worked around here
+(not fixed in `src/emit.c` itself this pass — a real, separate, out-of-scope investigation)**:
+(1) `{:max-steps N}` (a `MatchBudget` map literal) can't be passed directly as a call argument —
+`parena build` rejects it live with "map literal doesn't match any registered defstruct's own
+field set" — so it's bound via a `let` first, same as every real stdlib caller already does;
+(2) a genuine compiler bug, not merely a workaround-shaped inconvenience: ANY binding form
+(`let`, or a `match` arm's own bound name) used directly as an `if`'s own CONDITION fails with
+"unknown identifier" for anything it binds, referenced from ANYWHERE inside that same condition
+— even though the identical binding form compiles fine as a function's own direct body. Minimal
+repros confirmed directly against `parena build` for both `let` and `match`. Worked around by
+fully evaluating the match chain into a plain `result` binding first (a normal `let` body
+position, which compiles correctly), so the `if`'s own condition is just a bare identifier — never
+a binding form itself. **Verified end-to-end for three real cases**: `"cat" MATCH ^cat$` → true,
+`"dog" MATCH ^cat$` → false, `"42" MATCH [0-9]+` → true (also exercises `patternToPCRE`'s own
+class/range/quantifier lowering through a real compile+run, not just its own string-output unit
+test). `compileToGeneratedC`'s own test harness now always includes `regex/pcre`'s real dependency
+closure (`string`/`array`/`io`/`regex/syntax`/`regex/pcre`) in every build — PARENA compiles
+whole-program from whatever files are actually passed to `build`, so a bare `(import ...)` in the
+generated `.prn` text is not sufficient on its own; this costs nothing for programs that don't use
+`MATCH`. 3 new real end-to-end emitter tests. 68 tests total (subtests included).
+
 Status: **Phase 0 of `NORTHSTAR.md`'s phased plan.** This is the real, formal grammar the source
 design doc (`LoLanguageSpec.pdf`) never produced — see `NORTHSTAR.md` finding #1. No lexer/parser
 code exists yet; that's Phase 1. Every production below is checked against a worked derivation of
