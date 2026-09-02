@@ -61,25 +61,54 @@ file-scope-only, so a route table can't literally dispatch BY CALLING its own ma
 `cond`/`match` chain today) decides what to call. Real, separate follow-up once `qi` lands: real
 named function dispatch, closing this gap for real rather than working around it forever.
 
-### 2. Models — real API DEFINED, not yet built
+### 2. Models — **real, shipped**, refined into event-sourcing (2026-09-02 update, superseding
+the original IDUNA-direct plan below)
 
-Per this doc's own already-made, founder-corrected decision (below): persisted via **IDUNA**, not
-a new PARENA storage engine. A real, minimal ActiveRecord-lite shape:
+Founder real-time: "continue building the framework with jsonl log streaming with mysql psql
+sqlite etc projectors." Real architectural refinement, not a reversal: persistence is now
+event-sourced — an append-only **JSONL log is the real source of truth**, and SQL databases
+(SQLite/MySQL/PostgreSQL) are real, **rebuildable projections** of it, not the primary store. This
+answers the "not-yet-decided IDUNA endpoint shape" question below by sidestepping it: IDUNA's own
+real endpoint shape stops being a blocker for Models, since the log itself is the durable record.
+
+**Shipped** (`PARENA/stdlib/log/event.prn`, `log/jsonl.prn`, `log/projector.prn`,
+`stdlib/process.prn`'s new `run-capture`/`run-capture-exit-code`):
 
 ```
-(defstruct Model (kind : String) (id : String) (fields : (Vec (String String)) @ Region))
+(defstruct Event (kind : String) (id : String) (op : String) (fields-json : String) (ts : I32))
 
-(model/save model dest)               ;; -> (Result Model IduaError) @ Region, POST/PUT to IDUNA
-(model/find kind id dest)             ;; -> (Result Model IduaError) @ Region, GET from IDUNA
-(model/all kind dest)                 ;; -> (Result (Vec Model) IduaError) @ Region
-(model/destroy kind id dest)          ;; -> (Result Unit IduaError) @ Region, DELETE
+(append-event! path event dest)        ;; -> (Result Unit IoError) @ Region -- appends one JSONL line
+(read-lines path dest)                  ;; -> (Result (Vec String) IoError) @ Region -- real log replay
+
+(events-table-ddl)                      ;; the one shared generic `events` table schema
+(insert-event-sql event dest)           ;; real INSERT text, values SQL-escaped
+(project-sqlite! db-path event dest)    ;; shells out to the real `sqlite3` CLI via run-capture
+(project-mysql! database event dest)    ;; shells out to the real `mysql` CLI
+(project-postgres! database event dest) ;; shells out to the real `psql` CLI
 ```
 
-Real, named, not-yet-decided question: IDUNA's own real HTTP client shape from PARENA — does
-IDUNA need a new, real generic-record-storage endpoint (`/api/v1/records/:kind/:id`), or does each
-SHITHUB model (`Repo`/`User`/`Issue`/`PullRequest`) get its own real, typed IDUNA endpoint (more
-work per model, more type safety, matching how Apples/agent-secrets already work)? Real, honest,
-deferred to whoever builds this — not assumed either way here.
+Real, honest, named restrictions (see `log/event.prn`/`log/projector.prn`'s own header comments
+for the full reasoning): `Event.fields-json` is a plain, pre-built JSON string, not a
+`(Vec (String String))` — checked directly, no real, PROVEN-working PARENA `Vec`-of-tuple usage
+exists anywhere in this stdlib yet. Projectors use one shared, generic `events` table
+(kind/id/op/fields/ts, `fields` as a raw JSON blob) rather than per-kind typed tables — a real,
+separate, later follow-up. SQL values are single-quote-escaped, not truly parameterized — a real,
+named security follow-up, not a solved problem. **SQLite is real, LIVE-verified** (2026-09-02,
+`sudo-queue/45-install-sqlite3-and-postgresql-client.sh` run this session): `project-sqlite!` run
+against a real `sqlite3` CLI and a real on-disk database, queried back and confirmed correct —
+that exact live run is what surfaced and fixed a real, genuine shell-quoting bug (the naive
+`"..."` shell-wrapping silently corrupted embedded `"` characters in JSON field values; fixed with
+a real POSIX single-quote escaping pass, see `log/projector.prn`'s own `shell-single-quote` doc
+comment). **MySQL and PostgreSQL remain unverified live**: `psql` is now installed but no local
+PostgreSQL server is running in this sandbox; MySQL's own server is running but has no usable
+credentials for this session (pre-existing gap, `sudo-queue/NOT_INCLUDED.md`'s own S30-02 note).
+Both are otherwise unit-tested the same way SQLite was before its own live run.
+
+Original plan, kept for its own real, still-possibly-relevant record (a later real IDUNA-backed
+model layer isn't ruled out, just no longer the FIRST persistence layer built): a real, minimal
+ActiveRecord-lite `Model`/`model/save`/`find`/`all`/`destroy` shape persisted directly via IDUNA
+HTTP endpoints, with IDUNA's own real endpoint shape (generic-record vs. per-model-typed) left an
+open, undecided question.
 
 ### 3. Controllers — real API DEFINED, not yet built
 
@@ -214,9 +243,13 @@ session) sidesteps that entirely.
 pattern matching, HTTP-method dispatch, and Rails' own `resources` RESTful-entry generation, all
 real and tested (`make test-http-router`/`test-http-routes`).
 
-**Phase B2 (not started) — Models.** `model/save`/`find`/`all`/`destroy` per the real API defined
-above, once the real IDUNA HTTP client shape question (generic-record vs. per-model typed
-endpoints) is decided.
+**Phase B2 — DONE (2026-09-02 update), refined into event-sourcing.** `log/event.prn`/
+`log/jsonl.prn` (the real JSONL source-of-truth log) and `log/projector.prn` (SQL projectors over
+it) real, tested, and — for SQLite — **live-verified against a real database** (the founder ran
+`sudo-queue/45-install-sqlite3-and-postgresql-client.sh` this session; that live run found and
+fixed a real shell-quoting bug, see above). MySQL/PostgreSQL live verification remains blocked
+only on a running local Postgres server and real MySQL credentials (pre-existing gap, S30-02) —
+not on any remaining design or code work.
 
 **Phase B3 (not started) — Controllers.** The real `Request`/`Response` structs and a real,
 hand-written `cond`/`match` dispatch chain from `match-route`'s own returned route to the right
@@ -225,7 +258,7 @@ action `defn`, per the real API defined above.
 **Phase C (design only, unchanged)**: migrations wiring (real primitives already exist, per the
 Migrations section above) and the real SHITHUB git-hosting domain logic itself (repos/users/
 issues/pull requests) — not detailed here, a real, separate NORTHSTAR-worthy scope of its own once
-B2/B3 are real.
+B3 is real.
 
 ## Related
 
