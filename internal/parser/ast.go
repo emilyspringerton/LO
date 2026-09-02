@@ -122,15 +122,19 @@ type SwitchCase struct {
 // Lambda is LO_Formal_Grammar_Phase_0_Complete.md §15's `Lambda ::= LAMBDA LambdaParams Expr`
 // (2026-08-31, founder real-time: "🐪 LAMBDA", later formalized as 💠 in the uploaded grammar
 // doc — see this package's own doc comment on that discrepancy). Real, deliberate simplification
-// over the source doc's own `LambdaParams ::= Param+` with `Param ::= LITERAL` (a quoted string
-// name): real string-literal lexing (quoted text) doesn't exist in this compiler yet — a real,
-// separate, genuinely bigger lexer feature, not attempted here. This v0 instead reuses the
-// already-real `Let`/`LetRef` depth-index binding mechanism: a `Lambda` introduces exactly ONE
-// parameter at the next nesting depth (same as `Let`), referenced inside `Body` via `LetRef`
-// exactly like a `Let`-bound value — the only real difference from `Let` is that a `Lambda`'s
-// "bound value" isn't supplied until `Call` applies it, so `Lambda` carries no `Bound` field.
-// Real, honest scope: exactly one parameter (the source doc's own multi-param `LambdaParams` is
-// a real, separate follow-up).
+// over the source doc's own `LambdaParams ::= Param+` with `Param ::= LITERAL` (a quoted-string
+// name): this v0 instead reuses the already-real `Let`/`LetRef` depth-index binding mechanism —
+// a `Lambda` introduces exactly ONE parameter at the next nesting depth (same as `Let`),
+// referenced inside `Body` via `LetRef` exactly like a `Let`-bound value — the only real
+// difference from `Let` is that a `Lambda`'s "bound value" isn't supplied until `Call` applies
+// it, so `Lambda` carries no `Bound` field. Real quoted-string lexing (LITERAL/StringLit) DOES
+// exist now (added 2026-09-01, S222-08) — this is no longer blocked on that. Not revisited since:
+// the doc's own `LambdaParams Expr` grammar (one-or-more `Param` LITERALs immediately followed by
+// the body `Expr`) is genuinely ambiguous to parse as written — nothing in the grammar says how
+// many trailing LITERAL tokens are params versus the start of a LITERAL-valued body, and no
+// worked example in the doc disambiguates it either. A real, deliberately DEFERRED decision, not
+// silently guessed at either way — multi-param `Lambda`/multi-arg `Call` stay this v0's own
+// single-parameter/single-argument depth-index scheme until that ambiguity is resolved.
 type Lambda struct {
 	Body Expr
 }
