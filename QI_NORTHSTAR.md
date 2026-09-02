@@ -2,10 +2,17 @@
 
 ## Status
 
-Design-only, matching this repo's own standing "Spec Before Implementation" discipline
-(`THE_EMILY_WAY.md` Principle 2) — the same real precedent `NORTHSTAR.md` and `GRAMMAR.md` already
-set for LO itself: a real, reviewed design pass before any code, not started blind. No `qi`
-lexer/parser/lowering code exists yet. Written 2026-09-02 (founder real-time: "continue", against
+**Phase 2a (lexer) is real and shipped**: `internal/qi/lexer` (`Lex`, `Token`, `Kind`) tokenizes
+the real surface grammar below — parens/brackets, symbols (permissive, no restricted charset:
+`+4`/`foo-bar`/`x?`/a bare `` ` `` are all valid symbol text), decimal int literals range-checked
+to 0-3, double-quoted strings (no escapes, matching LO's own `LITERAL` rule exactly), and `;` line
+comments. 11 real tests, `GOWORK=off go build/vet/test ./...` clean. Phase 2b (parser + the real
+name-resolution lowering to `internal/parser`'s existing AST) has NOT started — that's the next
+real step, not attempted in the same pass as the lexer.
+
+Design-only below this point, matching this repo's own standing "Spec Before Implementation"
+discipline (`THE_EMILY_WAY.md` Principle 2) — the same real precedent `NORTHSTAR.md` and
+`GRAMMAR.md` already set for LO itself. Written 2026-09-02 (founder real-time: "continue", against
 `NORTHSTAR.md`'s own already-named Phase 2: *"`qi`'s own real frontend, same scalar/struct
 scope"*), once LO's own Phase 1 work (S214 through S223) reached a real, natural pause point —
 every well-scoped, unambiguous LO grammar item was either shipped or is genuinely blocked (a
