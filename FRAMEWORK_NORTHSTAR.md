@@ -110,21 +110,36 @@ ActiveRecord-lite `Model`/`model/save`/`find`/`all`/`destroy` shape persisted di
 HTTP endpoints, with IDUNA's own real endpoint shape (generic-record vs. per-model-typed) left an
 open, undecided question.
 
-### 3. Controllers — real API DEFINED, not yet built
+### 3. Controllers — **real, shipped** (2026-09-02, `PARENA/stdlib/http/controller.prn` +
+`examples/shithub_controller_demo.prn`, S225-04)
 
 ```
-(defstruct Request (method : String) (path : String) (params : (Vec (String String)) @ Region) (body : String))
+(defstruct Request (method : String) (path : String) (body : String))
 (defstruct Response (status : I32) (body : String) (content-type : String))
 
-;; one real PARENA defn per action, Rails' own controller-action shape:
-(defn repos-index [(req : &Request) (dest : Arena @ Region)] : Response ...)
-(defn repos-show   [(req : &Request) (dest : Arena @ Region)] : Response ...)
+(response-ok body dest)          ;; Rails' own real default 200 text response
+(response-json body dest)        ;; Rails' own real `render json: ...`
+(response-not-found)             ;; Rails' own real `head :not_found`
 ```
 
-The real "framework glue" (Rails' own `ActionDispatch`): given a `Request`, call `match-route`,
-then dispatch on the returned route's own `handler-name` string via a real, hand-written
-`cond`/`match` chain to the right action `defn` — real, working, and named as a real interim
-shape above, not a final design.
+Real, deliberate simplification versus the original draft above: `Request` carries no generic
+`params` collection — same reasoning `log/event.prn`'s own `fields-json` decision already
+established (no real, PROVEN-working PARENA `Vec`-of-tuple usage exists anywhere in this stdlib).
+A controller action calls the already-real, already-tested `http/router/extract-param` itself
+against the request's own `path` and the matched route's own `pattern`, which the dispatcher
+already has in hand.
+
+The real "framework glue" (Rails' own `ActionDispatch`) is demonstrated, not hidden behind a fake
+abstraction, in `examples/shithub_controller_demo.prn`'s own `dispatch`: given a `Request`, call
+`match-route`, then dispatch on the returned route's own `handler-name` string via a real,
+hand-written `if`/`string/str-eq?` chain to the right action `defn`. Real, unchanged, named
+limitation: this can't be a generic stdlib function — PARENA's own `fn` literals are
+non-capturing/file-scope-only, and no cross-module first-class function reference is confirmed
+working either — every real application writes its own version of this same chain. The demo's own
+`demo-repos-index`/`demo-repos-show` are explicitly illustrative (a `[]` list, a real route-param
+echo), not real SHITHUB domain logic — that's Phase C, unchanged. Verified end-to-end
+(`make test-http-controller`): a real `Router` built via `resource-routes`, real `Request`s
+dispatched through the full pipeline to the right demo action or a real 404.
 
 ### 4. Migrations — real, direct reuse, unchanged from this doc's own original decision
 
@@ -251,9 +266,10 @@ fixed a real shell-quoting bug, see above). MySQL/PostgreSQL live verification r
 only on a running local Postgres server and real MySQL credentials (pre-existing gap, S30-02) —
 not on any remaining design or code work.
 
-**Phase B3 (not started) — Controllers.** The real `Request`/`Response` structs and a real,
-hand-written `cond`/`match` dispatch chain from `match-route`'s own returned route to the right
-action `defn`, per the real API defined above.
+**Phase B3 — DONE (2026-09-02 update).** Real `Request`/`Response` structs
+(`stdlib/http/controller.prn`) and a real, hand-written `if`/`string/str-eq?` dispatch chain
+(`examples/shithub_controller_demo.prn`'s own `dispatch`) from `match-route`'s own returned route
+to the right demo action, verified end-to-end (`make test-http-controller`).
 
 **Phase C (design only, unchanged)**: migrations wiring (real primitives already exist, per the
 Migrations section above) and the real SHITHUB git-hosting domain logic itself (repos/users/
