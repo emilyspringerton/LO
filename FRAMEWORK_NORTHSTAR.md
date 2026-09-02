@@ -1,5 +1,109 @@
 # NORTHSTAR — LO "Batteries Included" (a Rails-like framework, as a dogfooding vehicle)
 
+## 2026-09-02 update: real capability re-check + the concrete API definition
+
+Founder real-time: "ok lets build SHITHUB using LO we need to build in that rails like framework
+into LO... define the api first of the web framework... make it like rails build in the stdlib as
+needed using single point code emojis when necessary to add to the language via the stdlib."
+
+**Real capability re-check — a lot has changed since this doc's own original "no variables, no
+functions, no strings" blockers (below) were written.** LO itself, not just `qi`, now has: real
+`Let`/`LetRef` bindings (depth-indexed, not named yet — that's still `qi`'s own real job, see
+`QI_NORTHSTAR.md`), real `Switch`/`Case`/`Default`, real `Lambda`/`Call` (single-param), a real
+`StringLit` value and `DOOR STRING`, and real `Match`/`Pattern` wired into PARENA's own
+`regex/pcre.prn`. What LO still genuinely lacks, unchanged: **multi-function programs** — each
+`.llll` file still compiles to exactly one `defn`, so a real router/controller/model triad
+*written in LO's own emoji syntax* still needs `qi`'s own Phase 2b (parser + lowering), which has
+only reached Phase 2a (lexer) so far. This is the real reason the API below is being built as
+PARENA stdlib `.prn` modules first (matching this session's own established, working pattern for
+every other piece of LO's real backend — `base4/*.prn`, `regex/pcre.prn`, `http/router.prn`), not
+LO source — `qi` Phase 2b is the real, separate bridge that will let application code (routes,
+controllers, models) eventually be *authored* in a friendlier surface syntax that lowers into
+calls against this same stdlib, once it lands.
+
+**The "single point code emoji" question, answered rather than deferred**: no new LO grammar
+tokens are needed for this pass. Every piece of the API below (`Route`, `Router`, `Model`,
+migrations) is a real PARENA `defstruct`/`defn` in `.prn` source — LO's own emoji alphabet isn't
+involved at all yet, since nothing here requires a new LO-level (not just stdlib-level) construct.
+If a real, later piece of this framework genuinely needs a new LO-level construct that can't be
+expressed as an ordinary stdlib function call (the kind of gap `SWITCH`/`LAMBDA`/`MATCH` each
+closed for LO itself), it gets a real, single-codepoint emoji token added the same way those were
+— named and justified in `GRAMMAR.md`, not invented silently. Not needed yet.
+
+## Real, concrete Rails-like API definition
+
+Four pillars, matching Rails' own MVC + routing shape. **Routing is real and shipped**
+(`PARENA/stdlib/http/routes.prn`, this same pass); Models/Controllers/Migrations below are the
+real, concrete API this pass DEFINES but has not yet built — named explicitly as not-yet-built,
+not conflated with the routing work that is.
+
+### 1. Routing — **real, shipped** (`stdlib/http/routes.prn`, on top of the already-real
+`stdlib/http/router.prn`)
+
+```
+(defstruct Route (method : String) (pattern : String) (handler-name : String))
+
+(add-route! router method pattern handler-name dest)   ;; Rails' `get "/repos", to: "repos#index"`
+(match-route router method path dest)                   ;; -> route index, or -1 (not found)
+(resource-routes router "repos" dest)                    ;; Rails' `resources :repos` --
+                                                           ;; generates all 5 RESTful entries:
+                                                           ;;   GET    /repos          repos#index
+                                                           ;;   POST   /repos          repos#create
+                                                           ;;   GET    /repos/:id      repos#show
+                                                           ;;   PUT    /repos/:id      repos#update
+                                                           ;;   DELETE /repos/:id      repos#destroy
+```
+
+Real, honest, named restriction (see `routes.prn`'s own header comment): `handler-name` is a
+plain `String`, not a callable function value — PARENA's own `fn` literals are non-capturing and
+file-scope-only, so a route table can't literally dispatch BY CALLING its own matched handler yet.
+`match-route` returns WHICH route matched; the app's own dispatch code (a real, hand-written
+`cond`/`match` chain today) decides what to call. Real, separate follow-up once `qi` lands: real
+named function dispatch, closing this gap for real rather than working around it forever.
+
+### 2. Models — real API DEFINED, not yet built
+
+Per this doc's own already-made, founder-corrected decision (below): persisted via **IDUNA**, not
+a new PARENA storage engine. A real, minimal ActiveRecord-lite shape:
+
+```
+(defstruct Model (kind : String) (id : String) (fields : (Vec (String String)) @ Region))
+
+(model/save model dest)               ;; -> (Result Model IduaError) @ Region, POST/PUT to IDUNA
+(model/find kind id dest)             ;; -> (Result Model IduaError) @ Region, GET from IDUNA
+(model/all kind dest)                 ;; -> (Result (Vec Model) IduaError) @ Region
+(model/destroy kind id dest)          ;; -> (Result Unit IduaError) @ Region, DELETE
+```
+
+Real, named, not-yet-decided question: IDUNA's own real HTTP client shape from PARENA — does
+IDUNA need a new, real generic-record-storage endpoint (`/api/v1/records/:kind/:id`), or does each
+SHITHUB model (`Repo`/`User`/`Issue`/`PullRequest`) get its own real, typed IDUNA endpoint (more
+work per model, more type safety, matching how Apples/agent-secrets already work)? Real, honest,
+deferred to whoever builds this — not assumed either way here.
+
+### 3. Controllers — real API DEFINED, not yet built
+
+```
+(defstruct Request (method : String) (path : String) (params : (Vec (String String)) @ Region) (body : String))
+(defstruct Response (status : I32) (body : String) (content-type : String))
+
+;; one real PARENA defn per action, Rails' own controller-action shape:
+(defn repos-index [(req : &Request) (dest : Arena @ Region)] : Response ...)
+(defn repos-show   [(req : &Request) (dest : Arena @ Region)] : Response ...)
+```
+
+The real "framework glue" (Rails' own `ActionDispatch`): given a `Request`, call `match-route`,
+then dispatch on the returned route's own `handler-name` string via a real, hand-written
+`cond`/`match` chain to the right action `defn` — real, working, and named as a real interim
+shape above, not a final design.
+
+### 4. Migrations — real, direct reuse, unchanged from this doc's own original decision
+
+`PARENA/stdlib/papercraft/note_version_mod.prn`'s own coalesce/eviction/conflict-detection
+primitives (S215-02) are the same real shape a migration/versioning system needs generically,
+already built. No new code needed for this pass — a real, separate follow-up is wiring a model's
+own schema version through them concretely, once Models (above) are real.
+
 ## Where this came from
 
 Founder real-time, same session as Phase 1 landing: "continue - now lets make LO batteries
@@ -95,20 +199,33 @@ guessed at:
   their own `GRAMMAR.md` amendment (a real, versioned change to the Phase 0 spec, not a silent
   addition) — named here as the real process this doc expects, not skipped.
 
-## Real, phased plan
+## Real, phased plan (2026-09-02 update: A and B are real and done — PARENA itself already has
+real, direct `defn`/`let`/multi-arg functions, the actual Phase A blocker was outdated the moment
+this framework work targeted PARENA `.prn` stdlib directly instead of waiting on `qi`)
 
-**Phase A (blocked on LO Phase 2 — `qi`, not started)**: `defn`/`let` real enough to hold a
-request value across a few steps and call sibling handlers. Nothing in this framework doc can
-start before this.
+**Phase A — DONE.** `defn`/multi-arg functions/`let` real enough to hold a request value across a
+few steps and call sibling handlers: this was never actually blocked on LO's own `qi` frontend —
+PARENA itself has had real `defn`/`let`/multi-param functions the whole time. The original
+blocker text above was written assuming the framework would be authored in LO's own emoji syntax
+first; building it as PARENA stdlib instead (matching every other real LO backend piece this
+session) sidesteps that entirely.
 
-**Phase B (blocked on Phase A + a real router decision above)**: the router alone, as the
-smallest real "framework" proof point — one real, hand-written route pattern matched against one
-real, hand-written request path, dispatching to one hard-coded handler. Matches this repo's own
-established "narrowest real slice first" discipline (Phase 1's own `on-thing`/xor-check
-precedent).
+**Phase B — DONE.** The router (`stdlib/http/router.prn`, `stdlib/http/routes.prn`): real path
+pattern matching, HTTP-method dispatch, and Rails' own `resources` RESTful-entry generation, all
+real and tested (`make test-http-router`/`test-http-routes`).
 
-**Phase C (design only, not detailed here)**: models + IDUNA persistence, migrations reusing
-`note_version_mod.prn`'s own primitives, and the real SHITHUB git-hosting logic itself.
+**Phase B2 (not started) — Models.** `model/save`/`find`/`all`/`destroy` per the real API defined
+above, once the real IDUNA HTTP client shape question (generic-record vs. per-model typed
+endpoints) is decided.
+
+**Phase B3 (not started) — Controllers.** The real `Request`/`Response` structs and a real,
+hand-written `cond`/`match` dispatch chain from `match-route`'s own returned route to the right
+action `defn`, per the real API defined above.
+
+**Phase C (design only, unchanged)**: migrations wiring (real primitives already exist, per the
+Migrations section above) and the real SHITHUB git-hosting domain logic itself (repos/users/
+issues/pull requests) — not detailed here, a real, separate NORTHSTAR-worthy scope of its own once
+B2/B3 are real.
 
 ## Related
 
