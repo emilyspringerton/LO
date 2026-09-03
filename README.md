@@ -14,7 +14,11 @@ implementation plan.
 
 ## Status
 
-Scoping/review only — no compiler code yet.
+Real, live compiler — Phase 0 (grammar) and Phase 1 (`lo build`: lexer → parser → emitter,
+real `.prn` output verified end to end through `parena build`/`cc`/execution) are both shipped.
+See `CLAUDE.md`/`NORTHSTAR.md` for the full real current capability and the real, current
+ceiling found while investigating a `DUNG` integration (mod-4-only arithmetic; no
+runtime-parameterized exported functions yet).
 
 ## License
 

@@ -140,6 +140,46 @@ full `Value` grammar and are named here rather than left implicit:
 on `burrow` growing `defenum`/`match`/`loop`/`Vec`/construction/`let` support before those same
 LO features could ever compile to Go — real, named, sequenced dependency, not glossed over.
 
+## Real, current blocker for DUNG integration — found, not built around (2026-09-03)
+
+Founder, kanban priority queue: "CONTINUE WORKING ON DUNG IDE write it in LO." Investigated
+concretely rather than attempting a token port. Two real, separate, compounding gaps, checked
+directly against this repo's own `internal/emitter/emitter.go`, not assumed:
+
+1. **LO's own arithmetic domain is mod-4, not general integer arithmetic.** `Arith`'s operator
+   set (`GRAMMAR.md` §5.1: `PLUS4 MINUS4 AND4 OR4 XOR4`) operates over the 4-symbol base4 state
+   space by design — this is the whole point of the esolang, not an oversight. `DUNG`'s own real
+   decision logic (`parena/entry.prn`'s `split-size`/`next-focus-index`) needs real, unbounded
+   I32 division/modulo over actual pixel widths and pane counts — values and operations
+   genuinely outside what a 4-state domain can express. This isn't a "not implemented yet" gap
+   the way `burrow`'s missing `defstruct` is; it's a real domain mismatch. A narrow, honest slice
+   of DUNG's own logic — a 4-way decision over a naturally 4-valued input (e.g., which of
+   Left/Right/Up/Down was pressed) — could genuinely fit LO's real `SWITCH`/`CASE` today,
+   without needing arithmetic to grow.
+2. **LO's compiled output has no way to be called with a runtime argument at all, even for that
+   narrower case.** `emitter.go`'s own header comment states the real, current scope precisely:
+   "emits one `main` function... `(defn main [] : I32 ...)`" — every real LO program compiles to
+   a single, self-contained, zero-parameter computation over compile-time-literal values, not a
+   reusable, exported function a host can invoke repeatedly with different real inputs (the way
+   `parena/entry.prn`'s own `(defn next-focus-index [(idx:I32)...] ...) (export ...)` already
+   is, and the way `DUNG`'s Go host already calls it via `burrowgen.NextFocusIndex(...)`). `Call`
+   only accepts an immediately-invoked `Lambda` literal in this v0 (`emitter.go` line ~309) —
+   there is no path to emit a bare top-level `Lambda` as an *exported*, externally-callable
+   `defn` instead of forcing an immediate call.
+
+**Real, honest conclusion**: "write DUNG in LO" is genuinely premature today, for reason #2 above
+specifically (reason #1 is dodgeable with a small-state-shaped slice; reason #2 is not, for
+*any* slice, since nothing LO compiles can be called from outside its own source file yet).
+Scoped, not built: extend the emitter so a bare top-level `Lambda` (not wrapped in `Call`) emits
+a real, parameterized, exported `defn` instead — reusing the existing Lambda-parameter
+depth-index binding machinery already built for the immediately-invoked case, just changing what
+gets emitted around it. That single change would be enough to let a genuinely 4-state-shaped
+DUNG decision (like the key-direction example above) become a real, honestly-scoped first LO
+integration — still bounded by gap #1 for anything needing real arithmetic. Not attempted this
+pass: a compiler-correctness change like this deserves its own real design/test pass, not a
+rushed patch under a single kanban card's own time budget. See `DUNG/NORTHSTAR.md`'s own mirrored
+note for the DUNG-side half of this same finding.
+
 ## Related
 
 - `PARENA` — the real base4 symbol algebra + compiler LO's own backend targets; `stdlib/

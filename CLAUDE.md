@@ -14,9 +14,20 @@ risk in the spec's own `let`-lowering scheme), and the real, phased plan.
 
 ## Status
 
-Scoping/review only. `LoLanguageSpec.pdf` (the real source design doc) reviewed; `NORTHSTAR.md`
-is the real critical review + phased plan. No lexer/parser/compiler code written yet — Phase 0
-(a real, formal grammar) hasn't started.
+Real, live compiler (this doc was stale — corrected 2026-09-03). Phase 0 (`GRAMMAR.md`, plus the
+founder-uploaded, more authoritative `LO_Formal_Grammar_Phase_0_Complete.md`) and Phase 1
+(`internal/lexer`/`internal/parser`/`internal/emitter`, `cmd/lo`) are both real and shipped:
+`State`/`Arith`/`Eq`/`Ternary`/`Switch`/`Case`/`Default`/`Let`/`Lambda`/`Call`/`Float`/`Double`
+Doors, plus a PCRE-lite pattern lexer+parser (emitter not wired yet). Every real language feature
+above has an actual `lo build` → `.prn` → `parena build` → `cc` → run end-to-end test, not just a
+shape check. A real, higher-level `qi` frontend (Phase 2) has its own lexer landed. A real,
+separate Rails-like framework effort (`FRAMEWORK_NORTHSTAR.md`, Controllers + a live-verified
+SQLite projector shipped) is being built PARENA-native ahead of `qi`/LO themselves reaching that
+far. **Real, current ceiling, found 2026-09-03** (see `NORTHSTAR.md`'s own "DUNG integration"
+section): LO's own arithmetic is mod-4 by design, not general integer arithmetic, and `lo
+build`'s compiled output has no way to be invoked with a runtime argument at all yet — every
+compiled program is a single, self-contained, zero-parameter computation. Both matter for any
+future host-integration use (e.g. `DUNG`).
 
 ## Real, current backend capability (checked directly, not assumed — see NORTHSTAR.md item 5)
 
