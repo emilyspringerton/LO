@@ -263,6 +263,61 @@ int main(void) {
 	return run.ProcessState.ExitCode()
 }
 
+// compileRunAndGetExitCodeWithArg -- real, live verification for NORTHSTAR.md's own "DUNG
+// integration" gap #2, now closed: a bare top-level Lambda (no CALL wrapper) must emit a real,
+// exported, PARAMETERIZED defn a host can invoke with an actual runtime argument -- not just a
+// single, self-contained, zero-parameter computation over compile-time-literal values the way
+// every other LO program in this v0 already was. Same real driver-construction shape
+// compileRunAndGetArenaExitCode already established (a small, purpose-built `main` that #includes
+// the generated .c and calls the real exported function directly), just passing a real `arg`
+// instead of constructing an Arena.
+func compileRunAndGetExitCodeWithArg(t *testing.T, src string, arg int) int {
+	t.Helper()
+	_, outC := compileToGeneratedC(t, src)
+
+	dir := filepath.Dir(outC)
+	driverC := filepath.Join(dir, "driver.c")
+	driver := fmt.Sprintf(`#include "parena_runtime.h"
+#include %q
+
+int main(void) {
+    return lo_program(%d);
+}
+`, outC, arg)
+	if err := os.WriteFile(driverC, []byte(driver), 0o644); err != nil {
+		t.Fatalf("could not write the real argument-passing driver: %v", err)
+	}
+
+	outBin := filepath.Join(dir, "driverbin")
+	runtimeC := "../../../PARENA/runtime/parena_runtime.c"
+	runtimeDir := "../../../PARENA/runtime"
+	cc := exec.Command("cc", "-std=c99", "-Wall", "-Wextra", "-pedantic", "-Werror", driverC, runtimeC, "-I", runtimeDir, "-o", outBin, "-lm")
+	if out, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s", err, out)
+	}
+
+	run := exec.Command(outBin)
+	_ = run.Run()
+	return run.ProcessState.ExitCode()
+}
+
+// TestEmitTopLevelLambdaIsCallableWithARealRuntimeArgument -- the real acceptance test for the
+// emitter change above: `🚪 🔢 💠 🧲 🔀 🌒;` is DOOR I32; LAMBDA (MAGNET XOR4 S1) -- the exact
+// same "param XOR4 S1" body TestEmitLambdaCallRunsCorrectly already verifies via an
+// immediately-invoked CALL, but here used BARE, as the whole program, with no CALL/baked-in
+// argument at all. Invoked twice, with two different real runtime arguments (2 and 3), to prove
+// this is a genuine reusable, parameterized function -- not a fluke that happens to match one
+// hard-coded value.
+func TestEmitTopLevelLambdaIsCallableWithARealRuntimeArgument(t *testing.T) {
+	src := "🚪 🔢 💠 🧲 🔀 🌒;"
+	if got := compileRunAndGetExitCodeWithArg(t, src, 2); got != 3 {
+		t.Errorf("lo_program(2) = %d, want 3 (2 XOR4 S1=1 = 3)", got)
+	}
+	if got := compileRunAndGetExitCodeWithArg(t, src, 0); got != 1 {
+		t.Errorf("lo_program(0) = %d, want 1 (0 XOR4 S1=1 = 1)", got)
+	}
+}
+
 // TestEmitLetRunsCorrectly -- real, live verification of the new Let/LetRef lowering (founder
 // real-time: "use ✨ for LET"), not just a shape check: compiles `✨ S2 (🧲 XOR4 S1)` (bind S2,
 // then XOR the binding with S1) all the way through a real `parena build` + `cc` + execution,

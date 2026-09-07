@@ -23,11 +23,15 @@ above has an actual `lo build` → `.prn` → `parena build` → `cc` → run en
 shape check. A real, higher-level `qi` frontend (Phase 2) has its own lexer landed. A real,
 separate Rails-like framework effort (`FRAMEWORK_NORTHSTAR.md`, Controllers + a live-verified
 SQLite projector shipped) is being built PARENA-native ahead of `qi`/LO themselves reaching that
-far. **Real, current ceiling, found 2026-09-03** (see `NORTHSTAR.md`'s own "DUNG integration"
-section): LO's own arithmetic is mod-4 by design, not general integer arithmetic, and `lo
-build`'s compiled output has no way to be invoked with a runtime argument at all yet — every
-compiled program is a single, self-contained, zero-parameter computation. Both matter for any
-future host-integration use (e.g. `DUNG`).
+far. **Real, current ceiling** (see `NORTHSTAR.md`'s own "DUNG integration" section): LO's own
+arithmetic is mod-4 by design, not general integer arithmetic — a real, permanent, by-design
+limit, not a gap. **Fixed 2026-09-07**: `lo build`'s compiled output CAN now be invoked with a
+real runtime argument — a bare top-level `Lambda` emits a real, exported, parameterized `defn`
+(not just an immediately-invoked, baked-in-argument `Call`), live-verified end to end (compile →
+`cc` → a real Go test driver passing two different runtime arguments, both producing the correct
+result). Still bounded by the mod-4 arithmetic ceiling above for anything needing general
+integer math (e.g. `DUNG`'s own pixel-width/pane-count logic) — only a naturally 4-valued slice
+of host logic is a real fit today.
 
 ## Real, current backend capability (checked directly, not assumed — see NORTHSTAR.md item 5)
 

@@ -72,7 +72,28 @@ func Emit(prog *parser.Program) (string, error) {
 	// real parameter, it can no longer be named "main" (see the fnName/params branch below).
 	needsArena := exprNeedsArena(prog.Body)
 
-	body, err := emitExpr(prog.Body, 0, nil)
+	// NORTHSTAR.md "Real, current blocker for DUNG integration" section, gap #2, now closed: a
+	// bare TOP-LEVEL Lambda (not wrapped in a Call) used to fall through to the generic
+	// emitExpr path below, which emits a Lambda as a real PARENA `(fn [(x0 : I32)] BODY)`
+	// anonymous-function VALUE -- valid PARENA, but invalid as a `defn`'s own body when the
+	// declared return type is I32/F64/String (a `fn` value is not a scalar). The real, honest
+	// fix scoped in NORTHSTAR.md: reuse the exact same Lambda-parameter depth-index binding
+	// scheme already built for the immediately-invoked (Call-wrapped) case, but emit it as the
+	// function's own real, exported, externally-callable parameter list instead of an inline
+	// `fn` value -- so a compiled LO program can finally be invoked with a real runtime
+	// argument (e.g. `burrowgen.NextFocusIndex(x)`-shaped host code), not just as a single,
+	// self-contained, zero-parameter computation over compile-time-literal values.
+	topLambda, isTopLambda := prog.Body.(parser.Lambda)
+
+	var body string
+	var err error
+	var lambdaParam string
+	if isTopLevel := isTopLambda; isTopLevel {
+		body, err = emitExpr(topLambda.Body, 1, []exprType{typeI32})
+		lambdaParam = "(x0 : I32)"
+	} else {
+		body, err = emitExpr(prog.Body, 0, nil)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -81,6 +102,13 @@ func Emit(prog *parser.Program) (string, error) {
 	}
 
 	fnName, params := "main", ""
+	if isTopLambda {
+		// A parameterized program can't be named "main" either, for the exact same real reason
+		// the Arena case below can't -- `(defn main [(x0 : I32)] ...)` doesn't mangle to a valid
+		// C entry point's signature. Reuses that same rename, not a second, parallel one.
+		fnName = "lo-program"
+		params = lambdaParam
+	}
 	if needsArena {
 		// Real, necessary consequence, not a stylistic choice: `(defn main [(dest : Arena @
 		// Region)] ...)` would mangle to `int main(Arena)` -- not a real C entry-point signature
@@ -91,7 +119,14 @@ func Emit(prog *parser.Program) (string, error) {
 		// called by a purpose-built driver" shape the FLOAT/DOUBLE/STRING Door verification
 		// already established -- just for a structural reason this time, not an ABI one.
 		fnName = "lo-program"
-		params = "(dest : Arena @ Region)"
+		if isTopLambda {
+			// Real, combined signature -- both a caller-supplied Arena (for Match/regex) and the
+			// program's own real runtime argument, Arena first matching every other real PARENA
+			// FFI-shaped stdlib function's own established parameter-ordering convention.
+			params = fmt.Sprintf("(dest : Arena @ Region) %s", lambdaParam)
+		} else {
+			params = "(dest : Arena @ Region)"
+		}
 	}
 
 	var b strings.Builder

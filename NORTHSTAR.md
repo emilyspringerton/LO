@@ -167,18 +167,26 @@ directly against this repo's own `internal/emitter/emitter.go`, not assumed:
    there is no path to emit a bare top-level `Lambda` as an *exported*, externally-callable
    `defn` instead of forcing an immediate call.
 
-**Real, honest conclusion**: "write DUNG in LO" is genuinely premature today, for reason #2 above
-specifically (reason #1 is dodgeable with a small-state-shaped slice; reason #2 is not, for
-*any* slice, since nothing LO compiles can be called from outside its own source file yet).
-Scoped, not built: extend the emitter so a bare top-level `Lambda` (not wrapped in `Call`) emits
-a real, parameterized, exported `defn` instead — reusing the existing Lambda-parameter
-depth-index binding machinery already built for the immediately-invoked case, just changing what
-gets emitted around it. That single change would be enough to let a genuinely 4-state-shaped
-DUNG decision (like the key-direction example above) become a real, honestly-scoped first LO
-integration — still bounded by gap #1 for anything needing real arithmetic. Not attempted this
-pass: a compiler-correctness change like this deserves its own real design/test pass, not a
-rushed patch under a single kanban card's own time budget. See `DUNG/NORTHSTAR.md`'s own mirrored
-note for the DUNG-side half of this same finding.
+**Gap #2 — FIXED (2026-09-07).** A bare top-level `Lambda` (not wrapped in `Call`) now emits a
+real, exported, parameterized `defn` — `emitter.go`'s `Emit()` detects a top-level `Lambda`,
+reuses the exact same Lambda-parameter depth-index binding scheme already built for the
+immediately-invoked case, and emits it as the function's own real parameter list instead of an
+inline `fn` value (renamed to `lo-program` for the same real "can't be named main with a real
+parameter" reason the Arena-forced rename already established; combines cleanly with that case
+too, for a program that needs both a Match's Arena and a real runtime argument). Live-verified,
+not just a shape check: `🚪 🔢 💠 🧲 🔀 🌒;` (a bare lambda, param XOR4 S1) compiled through
+`parena build` + `cc`, then invoked from a real Go test driver with two different real runtime
+arguments (2 and 0), both producing the correct XOR4 result — a genuine reusable function, not a
+single baked-in computation. New `TestEmitTopLevelLambdaIsCallableWithARealRuntimeArgument`
+(`internal/emitter/emitter_test.go`). Full suite green, zero regressions.
+
+**Real, honest conclusion, updated**: "write DUNG in LO" is no longer blocked by gap #2 — a
+genuinely 4-state-shaped DUNG decision (like the key-direction example above) can now compile to
+a real, externally-callable function. Gap #1 (LO's arithmetic is mod-4 by design, not general
+integer arithmetic) still stands and is NOT dodgeable in general — only a slice of DUNG's own
+logic that's naturally 4-valued (not general pixel-width/pane-count math) is a real fit today.
+See `DUNG/NORTHSTAR.md`'s own mirrored note for the DUNG-side half of this same finding — that
+side has not been updated in this pass.
 
 ## Related
 
