@@ -188,6 +188,19 @@ logic that's naturally 4-valued (not general pixel-width/pane-count math) is a r
 See `DUNG/NORTHSTAR.md`'s own mirrored note for the DUNG-side half of this same finding — that
 side has not been updated in this pass.
 
+## LO-2D — bidirectional grid execution model (design only, 2026-09-25)
+
+Founder real-time (`EMILY/BACKLOG.md` SECTION 549): "make LO work both left to right and bottom to
+top... resolve at the same time... matrix of emojis... dominoes crossroads... its like lisp the
+actual programming language is data." Full real design in `LO_2D_NORTHSTAR.md` — a checkerboard
+dependency-graph fixed-point model (rows fold left-to-right, columns fold bottom-to-top, shared
+"junction" cells require both axes to independently agree via an EQ-check, resolved by worklist
+iteration rather than any fixed traversal order), four hand-derived worked examples (including a
+real junction-mismatch compile error), and an honest mapping to `.prn` (a new compile-time
+elaboration pass erases the grid to an ordinary `Let`-chain before PARENA ever sees it — reaches
+`parena build` only, not `burrow build`, for the same already-documented `Let`-support reason item
+5 above already names). No compiler code written — design-only, matching this doc's own precedent.
+
 ## Related
 
 - `PARENA` — the real base4 symbol algebra + compiler LO's own backend targets; `stdlib/
@@ -197,4 +210,5 @@ side has not been updated in this pass.
 - `stdlib/k8s/scaling.prn` / `stdlib/k8s/k8s.prn` — the real, already-proven precedent for
   "scalar-only compiles to both targets, String/Vec-heavy stays C-only" that LO's own real scope
   should follow, not reinvent.
+- `LO_2D_NORTHSTAR.md` — the bidirectional grid execution model, design only (see above).
 - `EMILY` — RSI loop / backlog coordination for cross-repo work.

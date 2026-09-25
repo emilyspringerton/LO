@@ -20,6 +20,12 @@ See `CLAUDE.md`/`NORTHSTAR.md` for the full real current capability and the real
 ceiling found while investigating a `DUNG` integration (mod-4-only arithmetic; no
 runtime-parameterized exported functions yet).
 
+**Design only, not implemented**: `LO_2D_NORTHSTAR.md` specs a real bidirectional 2D grid
+execution model (rows resolve left-to-right, columns resolve bottom-to-top, a dependency-graph
+fixed-point over shared "junction" cells — the "dominoes crossroads" case, worked through by hand
+in four examples including a genuine junction-mismatch compile error). No grid compiler code
+exists yet — this is a real, rigorous design pass, not a shipped feature.
+
 ## License
 
 Unlicense (public domain) — see `LICENSE`.
